@@ -248,10 +248,11 @@ function enterApp(sys) {
 function wsConnect() {
   if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(state.token)}`);
+  // 契约 1.12（安全修订）：token 不走 URL query（防进访问日志），连接后首条消息认证
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
 
   ws.onopen = () => {
-    setLink(true);
+    ws.send(JSON.stringify({ type: "auth", token: state.token }));
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) ws.send('{"type":"ping"}');
@@ -262,6 +263,7 @@ function wsConnect() {
     let msg;
     try { msg = JSON.parse(e.data); } catch (_) { return; }
     switch (msg.type) {
+      case "auth_ok":           setLink(true); break;
       case "system":            renderSystem(msg.data); break;
       case "task_started":      onTaskStarted(msg.task); break;
       case "task_event":        onTaskEvent(msg.task_id, msg.event); break;
@@ -768,7 +770,9 @@ async function decideApproval(decision) {
     if (e.status === 409) toast("该请求已被处理", true);
     else if (e.status !== 401) toast("操作失败: " + e.message, true);
   }
-  state.approvals.shift();
+  // 按 id 幂等删除：WS approval_resolved 可能先于 REST 响应到达并已删除当前项，
+  // 此时 shift() 会误删下一条待审批（双删竞态）
+  state.approvals = state.approvals.filter((x) => x.id !== cur.id);
   renderApproval();
   btns.forEach((b) => (b.disabled = false));
 }

@@ -669,21 +669,40 @@ def test_system(make_client):
 def test_ws_bad_token_closed_4401(make_client):
     env = make_client()
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with env.client.websocket_connect("/ws?token=wrong") as ws:
+        with env.client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "auth", "token": "wrong"})
             ws.receive_json()
     assert exc_info.value.code == 4401
 
 
+def test_ws_non_auth_first_message_closed_4401(make_client):
+    """首条消息不是 auth 类型（如直接 ping）也必须按认证失败关闭。"""
+    env = make_client()
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with env.client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "ping"})
+            ws.receive_json()
+    assert exc_info.value.code == 4401
+
+
+def _ws_auth(ws):
+    """契约 1.12（安全修订）：连接后首条消息认证，服务端回 auth_ok。"""
+    ws.send_json({"type": "auth", "token": TOKEN})
+    assert ws.receive_json() == {"type": "auth_ok"}
+
+
 def test_ws_ping_pong(make_client):
     env = make_client()
-    with env.client.websocket_connect(f"/ws?token={TOKEN}") as ws:
+    with env.client.websocket_connect("/ws") as ws:
+        _ws_auth(ws)
         ws.send_json({"type": "ping"})
         assert ws.receive_json() == {"type": "pong"}
 
 
 def test_ws_task_stream(make_client):
     env = make_client()
-    with env.client.websocket_connect(f"/ws?token={TOKEN}") as ws:
+    with env.client.websocket_connect("/ws") as ws:
+        _ws_auth(ws)
         r = env.client.post("/api/chat", json={"message": "流式测试"}, headers=H)
         task_id = r.json()["task_id"]
         msgs = []
@@ -708,7 +727,8 @@ def test_ws_task_stream(make_client):
 
 def test_ws_approval_broadcast(make_client):
     env = make_client()
-    with env.client.websocket_connect(f"/ws?token={TOKEN}") as ws:
+    with env.client.websocket_connect("/ws") as ws:
+        _ws_auth(ws)
         r = env.client.post("/api/internal/approvals",
                             json={"action": "发邮件", "detail": "给客户发报价", "risk_level": "critical"},
                             headers=H)
@@ -725,7 +745,8 @@ def test_ws_approval_broadcast(make_client):
 
 def test_ws_cron_changed_broadcast(make_client):
     env = make_client()
-    with env.client.websocket_connect(f"/ws?token={TOKEN}") as ws:
+    with env.client.websocket_connect("/ws") as ws:
+        _ws_auth(ws)
         env.client.post("/api/cron",
                         json={"name": "j", "cron": "* * * * *", "prompt": "p"}, headers=H)
         assert ws.receive_json() == {"type": "cron_changed"}

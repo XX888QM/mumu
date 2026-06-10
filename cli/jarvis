@@ -89,9 +89,11 @@ def cmd_chat(args) -> int:
     from websockets.sync.client import connect
 
     base, token = get_config()
-    ws_url = base.replace("http://", "ws://") + f"/ws?token={token}"
+    ws_url = base.replace("http://", "ws://") + "/ws"
     try:
         with connect(ws_url) as ws:
+            # 契约 1.12（安全修订）：连接后首条消息认证，token 不走 URL query
+            ws.send(json.dumps({"type": "auth", "token": token}))
             payload = {"message": args.message}
             if args.session:
                 payload["session_id"] = args.session

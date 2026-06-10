@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import psutil
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, WebSocket
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.websockets import WebSocketDisconnect
@@ -61,6 +61,15 @@ async def lifespan(app: FastAPI):
     app.state.cancelled_tasks = set()     # 已请求取消的 task id（cancelled 状态判定）
     app.state.bg_tasks = set()            # 后台 asyncio.Task 强引用（防 GC 丢任务）
     app.state.started_at = time.monotonic()
+
+    # MCP 桥运行时凭据文件（0600）：引擎 argv 只暴露此路径，token 不进 ps 可见的命令行
+    runtime = Path(settings.runtime_file)
+    runtime.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(runtime), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump({"url": f"http://127.0.0.1:{settings.jarvis_port}",
+                   "token": settings.jarvis_token}, f)
+    os.chmod(runtime, 0o600)  # 文件已存在时 os.open 的 mode 不生效，显式收紧
 
     # db：测试可预注入 Fake，否则按契约 1.4 构造真库
     if getattr(app.state, "db", None) is None:
@@ -339,7 +348,7 @@ async def list_messages(session_id: str, request: Request):
 
 
 @router.get("/tasks")
-async def list_tasks(request: Request, limit: int = 50):
+async def list_tasks(request: Request, limit: int = Query(50, ge=1, le=500)):
     return request.app.state.db.list_tasks(limit)
 
 
@@ -495,14 +504,24 @@ async def healthz():
 
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
-    token = websocket.query_params.get("token", "")
-    if not settings.jarvis_token or not hmac.compare_digest(
-            token.encode(), settings.jarvis_token.encode()):
-        # 契约 1.12：token 错直接关闭 code 4401（先 accept 再关，确保客户端能读到关闭码）
-        await websocket.accept()
+    # 契约 1.12（安全修订）：token 不走 URL query（会进访问日志），改为连接后 5 秒内
+    # 发送首条认证消息 {"type":"auth","token":"..."}；通过回 {"type":"auth_ok"}，
+    # 失败/超时/格式错关闭 code 4401。
+    await websocket.accept()
+    try:
+        first = await asyncio.wait_for(websocket.receive_json(), 5.0)
+    except WebSocketDisconnect:
+        return
+    except Exception:  # 超时、非 JSON 等一律按认证失败处理
         await websocket.close(code=4401)
         return
-    await websocket.accept()
+    token = str(first.get("token", "")) if isinstance(first, dict) else ""
+    if (not isinstance(first, dict) or first.get("type") != "auth"
+            or not settings.jarvis_token
+            or not hmac.compare_digest(token.encode(), settings.jarvis_token.encode())):
+        await websocket.close(code=4401)
+        return
+    await websocket.send_json({"type": "auth_ok"})
     app.state.ws_clients.add(websocket)
     try:
         while True:

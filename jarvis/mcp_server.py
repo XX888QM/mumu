@@ -3,13 +3,16 @@
 由 codex 引擎按契约 1.7 以子进程方式拉起（FastMCP over stdio），
 赋予模型四种主动能力：申请授权 / 推送到大哥 iPhone / 创建定时任务 / 写长期记忆。
 
-硬性约束（契约 1.10）：
-- 只从环境变量取配置：JARVIS_URL / JARVIS_TOKEN / JARVIS_TASK_ID（引擎注入），
+硬性约束（契约 1.10，含安全修订）：
+- 配置来源：优先环境变量 JARVIS_URL / JARVIS_TOKEN（测试注入路径）；
+  生产路径为 JARVIS_RUNTIME 指向的 0600 凭据文件（引擎只在 argv 暴露文件路径，
+  token 不进程可见的命令行）。JARVIS_TASK_ID 始终来自环境变量。
   APPROVAL_TIMEOUT 可选（默认 1800 秒）。
 - 禁止 import jarvis 包其他模块——本文件必须能以脚本路径独立运行。
-- 用 httpx 同步客户端回调贾维斯服务，Header: Authorization: Bearer $JARVIS_TOKEN。
+- 用 httpx 同步客户端回调贾维斯服务，Header: Authorization: Bearer <token>。
 """
 
+import json
 import os
 import time
 
@@ -46,11 +49,31 @@ def _approval_timeout() -> float:
         return DEFAULT_APPROVAL_TIMEOUT
 
 
+def _runtime_config() -> tuple[str, str]:
+    """解析服务地址与 token：优先直接环境变量（测试注入），否则读 JARVIS_RUNTIME 凭据文件。"""
+    url = os.environ.get("JARVIS_URL", "").strip()
+    token = os.environ.get("JARVIS_TOKEN", "").strip()
+    if url and token:
+        return url, token
+    path = os.environ.get("JARVIS_RUNTIME", "").strip()
+    if not path:
+        raise RuntimeError(
+            "缺少环境变量 JARVIS_RUNTIME（或 JARVIS_URL+JARVIS_TOKEN）："
+            "MCP 工具桥必须由贾维斯引擎注入后启动")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data["url"], data["token"]
+    except (OSError, ValueError, KeyError) as exc:
+        raise RuntimeError(f"JARVIS_RUNTIME 凭据文件不可用（{path}）：{exc}") from exc
+
+
 def _client() -> httpx.Client:
     """构造指向贾维斯服务的同步 httpx 客户端（带 Bearer 认证头）。"""
+    url, token = _runtime_config()
     return httpx.Client(
-        base_url=_env("JARVIS_URL"),
-        headers={"Authorization": f"Bearer {_env('JARVIS_TOKEN')}"},
+        base_url=url,
+        headers={"Authorization": f"Bearer {token}"},
         timeout=15.0,
         transport=_transport,
     )
@@ -70,17 +93,17 @@ def request_approval(action: str, detail: str, risk_level: str = "high") -> str:
         )
         resp.raise_for_status()
         approval_id = resp.json()["approval_id"]
-        # 2) 每 POLL_INTERVAL 秒轮询一次，直到非 pending 或超时
+        # 2) 先查后睡：立即响应已决的审批；到点（不足一个轮询周期）即返回 expired
         deadline = time.monotonic() + timeout
         while True:
-            time.sleep(POLL_INTERVAL)
             poll = client.get(f"/api/approvals/{approval_id}")
             poll.raise_for_status()
             status = poll.json().get("status", "pending")
             if status != "pending":
                 return status
-            if time.monotonic() >= deadline:
+            if time.monotonic() + POLL_INTERVAL > deadline:
                 return "expired"
+            time.sleep(POLL_INTERVAL)
 
 
 @mcp.tool()

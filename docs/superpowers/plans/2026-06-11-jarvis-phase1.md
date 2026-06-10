@@ -184,8 +184,10 @@ cmd = [
   "-c", f'model_reasoning_effort="{settings.jarvis_reasoning}"',
   "-c", f'mcp_servers.jarvis.command="{settings.venv_py}"',
   "-c", f'mcp_servers.jarvis.args=["{settings.jarvis_root}/jarvis/mcp_server.py"]',
-  "-c", ('mcp_servers.jarvis.env={ JARVIS_URL = "http://127.0.0.1:%d", JARVIS_TOKEN = "%s", JARVIS_TASK_ID = "%s" }'
-         % (settings.jarvis_port, settings.jarvis_token, task_id)),
+  # 安全修订(审查后)：token 不进 argv（ps 可见），MCP 桥经 JARVIS_RUNTIME 指向的
+  # 0600 凭据文件（data/.runtime.json，server 启动时写入 {url,token}）取配置
+  "-c", ('mcp_servers.jarvis.env={ JARVIS_RUNTIME = "%s", JARVIS_TASK_ID = "%s" }'
+         % (settings.runtime_file, task_id)),
 ]
 if thread_id:
     cmd += ["resume", thread_id, prompt]
@@ -273,7 +275,8 @@ def remember(content: str) -> str:
 
 静态：`/` 挂 `web/`（index.html 为默认页）。
 
-### 1.12 WebSocket 协议（`/ws?token=...`，token 错直接关闭 code 4401）
+### 1.12 WebSocket 协议（安全修订：连 `/ws` 后 5 秒内首条消息 `{"type":"auth","token":"..."}` 认证，
+通过回 `{"type":"auth_ok"}`；失败/超时/格式错关闭 code 4401。token 不走 URL query，防进访问日志）
 
 服务端 → 客户端（均为 JSON 单条）：
 

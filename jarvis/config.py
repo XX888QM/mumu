@@ -30,6 +30,8 @@ class Settings:
         self.workspace = g("JARVIS_WORKSPACE", str(ROOT / "workspace"))
         self.db_path = g("JARVIS_DB", str(ROOT / "data" / "jarvis.db"))
         self.venv_py = str(ROOT / ".venv" / "bin" / "python")
+        # MCP 桥运行时凭据文件（0600，server 启动时写入）：token 不进子进程 argv
+        self.runtime_file = str(ROOT / "data" / ".runtime.json")
 
 
 settings = Settings()

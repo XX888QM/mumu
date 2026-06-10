@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import json
 from dataclasses import dataclass, field
@@ -53,9 +54,9 @@ class CodexEngine:
             "-c", f'model_reasoning_effort="{settings.jarvis_reasoning}"',
             "-c", f'mcp_servers.jarvis.command="{settings.venv_py}"',
             "-c", f'mcp_servers.jarvis.args=["{settings.jarvis_root}/jarvis/mcp_server.py"]',
-            "-c", ('mcp_servers.jarvis.env={ JARVIS_URL = "http://127.0.0.1:%d", '
-                   'JARVIS_TOKEN = "%s", JARVIS_TASK_ID = "%s" }'
-                   % (settings.jarvis_port, settings.jarvis_token, task_id)),
+            # token 不进 argv（ps 可见）：MCP 桥按 JARVIS_RUNTIME 指向的 0600 文件取 url/token
+            "-c", ('mcp_servers.jarvis.env={ JARVIS_RUNTIME = "%s", JARVIS_TASK_ID = "%s" }'
+                   % (settings.runtime_file, task_id)),
         ]
         if thread_id:
             # 全局参数必须在 resume 子命令之前
@@ -126,27 +127,29 @@ class CodexEngine:
             return await proc.wait()
 
         stderr_task = asyncio.create_task(_drain_stderr())
+        stderr_data = b""
         try:
             returncode = await asyncio.wait_for(_consume_and_wait(), effective_timeout)
         except (asyncio.TimeoutError, TimeoutError):
-            stderr_task.cancel()
             await self._terminate(proc)
             raise EngineTimeout(
                 f"任务 {task_id} 超时（{effective_timeout} 秒），子进程已终止"
             ) from None
         except BaseException:
             # 任何意外（含外层 task 被 cancel）都不留僵尸子进程
-            stderr_task.cancel()
             await self._terminate(proc)
             raise
         finally:
             self._procs.pop(task_id, None)
-
-        try:
-            stderr_data = await asyncio.wait_for(stderr_task, _KILL_GRACE)
-        except (asyncio.TimeoutError, TimeoutError):
-            stderr_task.cancel()
-            stderr_data = b""
+            # 任何退出路径都回收 stderr_task（不收会在 GC 时报
+            # "Task was destroyed but it is pending!"）。此时进程已退出或已被
+            # _terminate 杀死，正常应秒到 EOF；宽限 _KILL_GRACE 后强制 cancel。
+            try:
+                stderr_data = await asyncio.wait_for(stderr_task, _KILL_GRACE)
+            except BaseException:
+                stderr_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await stderr_task
 
         if returncode != 0:
             tail = stderr_data.decode("utf-8", "replace")[-500:]

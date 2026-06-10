@@ -110,9 +110,9 @@ def _expected_cmd(task_id: str) -> list[str]:
         "-c", f'model_reasoning_effort="{settings.jarvis_reasoning}"',
         "-c", f'mcp_servers.jarvis.command="{settings.venv_py}"',
         "-c", f'mcp_servers.jarvis.args=["{settings.jarvis_root}/jarvis/mcp_server.py"]',
-        "-c", ('mcp_servers.jarvis.env={ JARVIS_URL = "http://127.0.0.1:%d", '
-               'JARVIS_TOKEN = "%s", JARVIS_TASK_ID = "%s" }'
-               % (settings.jarvis_port, settings.jarvis_token, task_id)),
+        # 安全修订：token 不进 argv，MCP 桥经 JARVIS_RUNTIME 凭据文件取 url/token
+        "-c", ('mcp_servers.jarvis.env={ JARVIS_RUNTIME = "%s", JARVIS_TASK_ID = "%s" }'
+               % (settings.runtime_file, task_id)),
     ]
 
 
