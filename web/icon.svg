@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- J.A.R.V.I.S. 反应堆图标：深空黑底 + 青色圆环反应堆 -->
+  <defs>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#eaffff"/>
+      <stop offset="38%" stop-color="#7df4ff"/>
+      <stop offset="75%" stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#0080a8"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="256" height="256" fill="#04080f"/>
+  <g filter="url(#glow)">
+    <circle cx="128" cy="128" r="104" fill="none" stroke="#00e5ff" stroke-width="4" opacity="0.85"/>
+    <circle cx="128" cy="128" r="86" fill="none" stroke="#00e5ff" stroke-width="15"
+            stroke-dasharray="33.5 11.5" opacity="0.9"/>
+    <circle cx="128" cy="128" r="62" fill="none" stroke="#1e90ff" stroke-width="3" opacity="0.7"/>
+    <circle cx="128" cy="128" r="44" fill="url(#core)"/>
+    <circle cx="128" cy="128" r="44" fill="none" stroke="#bffaff" stroke-width="2" opacity="0.9"/>
+  </g>
+</svg>

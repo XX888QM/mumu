@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 贾维斯系统 LaunchAgent 模板：双下划线占位符由 deploy/install.sh 从 .env 渲染后再装入 ~/Library/LaunchAgents/ -->
+	<key>Label</key>
+	<string>com.yunxin.jarvis</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__VENV_PY__</string>
+		<string>-m</string>
+		<string>uvicorn</string>
+		<string>jarvis.server:app</string>
+		<string>--host</string>
+		<string>__JARVIS_HOST__</string>
+		<string>--port</string>
+		<string>__JARVIS_PORT__</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__JARVIS_ROOT__</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>__JARVIS_ROOT__/logs/jarvis.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>__JARVIS_ROOT__/logs/jarvis.err.log</string>
+	<!-- LaunchAgent 默认 PATH 极简，补全 brew/npm 路径保证子进程（codex 等）可用 -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/Users/yunxin/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+</dict>
+</plist>

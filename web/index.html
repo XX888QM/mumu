@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>J.A.R.V.I.S. // 贾维斯控制台</title>
+  <meta name="theme-color" content="#04080f">
+  <!-- iPhone 加主屏支持 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="JARVIS">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- 全息扫描光束（装饰层） -->
+  <div id="scanbeam" aria-hidden="true"></div>
+
+  <!-- ===== 开机 boot 动画层 ===== -->
+  <div id="boot-overlay">
+    <div class="boot-inner">
+      <div class="reactor boot-reactor active" aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <circle class="ring-outer" cx="50" cy="50" r="46" fill="none" stroke="#00e5ff" stroke-width="1.5" opacity=".65"/>
+          <g class="seg-ring">
+            <circle cx="50" cy="50" r="35" fill="none" stroke="#00e5ff" stroke-width="7" stroke-dasharray="13.6 4.7" opacity=".9"/>
+          </g>
+          <circle class="ring-inner" cx="50" cy="50" r="25" fill="none" stroke="#1e90ff" stroke-width="1.5" opacity=".6"/>
+          <circle class="core" cx="50" cy="50" r="15" fill="#aef6ff"/>
+        </svg>
+      </div>
+      <div id="boot-text"></div>
+      <div class="boot-skip">[ 点击任意处跳过 ]</div>
+    </div>
+  </div>
+
+  <!-- ===== token 认证层 ===== -->
+  <div id="token-overlay" class="hidden">
+    <div class="holo-card token-card">
+      <div class="reactor mini" aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <circle class="ring-outer" cx="50" cy="50" r="46" fill="none" stroke="#00e5ff" stroke-width="2" opacity=".65"/>
+          <g class="seg-ring">
+            <circle cx="50" cy="50" r="35" fill="none" stroke="#00e5ff" stroke-width="7" stroke-dasharray="13.6 4.7" opacity=".9"/>
+          </g>
+          <circle class="core" cx="50" cy="50" r="15" fill="#aef6ff"/>
+        </svg>
+      </div>
+      <h1 class="glow-title">J.A.R.V.I.S.</h1>
+      <p class="dim">身份验证 // ACCESS TOKEN REQUIRED</p>
+      <input id="token-input" type="password" autocomplete="off" placeholder="输入访问令牌">
+      <button id="token-submit" class="btn btn-primary">接入系统 // CONNECT</button>
+      <p id="token-error" class="err-text"></p>
+    </div>
+  </div>
+
+  <!-- ===== 授权请求红色警示层 ===== -->
+  <div id="approval-overlay" class="hidden">
+    <div class="approval-card">
+      <div class="approval-head">⚠ 授权请求 // AUTHORIZATION REQUIRED</div>
+      <div class="approval-meta">
+        <span class="lbl">风险等级</span>
+        <span id="approval-risk" class="risk-badge">high</span>
+      </div>
+      <div id="approval-action" class="approval-action"></div>
+      <pre id="approval-detail" class="approval-detail"></pre>
+      <div class="approval-btns">
+        <button id="approval-deny" class="btn btn-deny">拒绝 // DENY</button>
+        <button id="approval-approve" class="btn btn-approve">批准 // APPROVE</button>
+      </div>
+      <div id="approval-queue-hint" class="dim"></div>
+    </div>
+  </div>
+
+  <!-- ===== 主应用 ===== -->
+  <div id="app" class="hidden">
+    <header id="topbar">
+      <div class="bar-left">
+        <button id="btn-sessions-toggle" class="drawer-btn" title="会话列表">☰</button>
+        <span class="bar-tag dim">YUNXIN // CONSOLE v1</span>
+      </div>
+      <div class="brand">
+        <div id="reactor" class="reactor" aria-hidden="true">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-outer" cx="50" cy="50" r="46" fill="none" stroke="#00e5ff" stroke-width="2" opacity=".65"/>
+            <g class="seg-ring">
+              <circle cx="50" cy="50" r="35" fill="none" stroke="#00e5ff" stroke-width="7" stroke-dasharray="13.6 4.7" opacity=".9"/>
+            </g>
+            <circle class="ring-inner" cx="50" cy="50" r="25" fill="none" stroke="#1e90ff" stroke-width="1.5" opacity=".6"/>
+            <circle class="core" cx="50" cy="50" r="15" fill="#aef6ff"/>
+          </svg>
+        </div>
+        <span class="brand-name glow-title">J.A.R.V.I.S.</span>
+      </div>
+      <div class="bar-right">
+        <div id="sysbar">
+          <span class="sys-item"><span class="lbl">CPU</span><b id="sys-cpu">--%</b></span>
+          <span class="sys-item"><span class="lbl">MEM</span><b id="sys-mem">--%</b></span>
+          <span class="sys-item sys-hide-m"><span class="lbl">DISK</span><b id="sys-disk">--%</b></span>
+          <span class="sys-item"><span class="lbl">CODEX</span><b id="sys-codex">--</b></span>
+          <span class="sys-item"><span class="lbl">TASKS</span><b id="sys-tasks">0</b></span>
+          <span class="sys-item"><span class="lbl">LINK</span><b id="sys-link" class="link-off">●</b></span>
+        </div>
+        <button id="btn-tasks-toggle" class="drawer-btn" title="任务面板">▤</button>
+      </div>
+    </header>
+
+    <div id="main">
+      <!-- 左：会话列表 -->
+      <aside id="sessions-panel">
+        <div class="panel-head"><span>会话 // SESSIONS</span><button id="btn-new-session" class="btn btn-mini" title="新建会话">＋ 新建</button></div>
+        <div id="session-list" class="plist"></div>
+      </aside>
+
+      <!-- 中：对话流 -->
+      <section id="chat-panel">
+        <div id="chat-stream"></div>
+        <form id="chat-form" autocomplete="off">
+          <textarea id="chat-input" rows="2" placeholder="向贾维斯下达指令…（Enter 发送 / Shift+Enter 换行）"></textarea>
+          <button type="submit" id="chat-send" class="btn btn-primary">发送</button>
+        </form>
+      </section>
+
+      <!-- 右：任务面板 -->
+      <aside id="tasks-panel">
+        <div class="panel-tabs">
+          <button class="tab active" data-tab="cron">定时任务</button>
+          <button class="tab" data-tab="running">运行中</button>
+          <button class="tab" data-tab="history">历史</button>
+        </div>
+        <div class="pane" id="pane-cron">
+          <div id="list-cron" class="plist"></div>
+          <form id="cron-form" autocomplete="off">
+            <div class="form-title" id="cron-form-title">＋ 新建定时任务</div>
+            <input id="cron-name" placeholder="名称">
+            <input id="cron-expr" placeholder="cron 五段式：分 时 日 月 周">
+            <textarea id="cron-prompt" rows="3" placeholder="到点执行的指令"></textarea>
+            <div class="form-row">
+              <button type="submit" id="cron-submit" class="btn btn-primary">添加</button>
+              <button type="button" id="cron-cancel-edit" class="btn hidden">取消编辑</button>
+            </div>
+            <div id="cron-msg" class="err-text"></div>
+          </form>
+        </div>
+        <div class="pane hidden" id="pane-running"><div id="list-running" class="plist"></div></div>
+        <div class="pane hidden" id="pane-history"><div id="list-history" class="plist"></div></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- 手机抽屉遮罩 / toast 容器 -->
+  <div id="backdrop" class="hidden"></div>
+  <div id="toasts"></div>
+
+  <noscript><p style="color:#00e5ff;text-align:center;margin-top:40vh">需要启用 JavaScript</p></noscript>
+  <script src="/app.js" defer></script>
+</body>
+</html>

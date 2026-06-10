@@ -1,0 +1,16 @@
+{
+  "name": "J.A.R.V.I.S. 贾维斯控制台",
+  "short_name": "JARVIS",
+  "description": "大哥的 AI 管家控制台",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#04080f",
+  "theme_color": "#04080f",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}
