@@ -399,3 +399,12 @@ input:focus, textarea:focus { border-color: rgba(0, 229, 255, 0.6); box-shadow: 
   .task-block { width: 94%; }
   #chat-stream { padding: 12px; }
 }
+
+/* 窄屏（手机竖屏）：放弃三栏网格居中，改 flex 顺排——反应堆图标挨着菜单钮，
+   状态条右对齐可横向滚动，物理上杜绝与标题重叠 */
+@media (max-width: 600px) {
+  .brand-name { display: none; }
+  #topbar { display: flex; align-items: center; gap: 10px; }
+  .bar-right { flex: 1; min-width: 0; display: flex; justify-content: flex-end; }
+  #sysbar { max-width: none; }
+}
