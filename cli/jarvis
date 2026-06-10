@@ -85,6 +85,7 @@ def _print_event(event: dict) -> None:
 
 def cmd_chat(args) -> int:
     import httpx
+    from websockets.exceptions import ConnectionClosed
     from websockets.sync.client import connect
 
     base, token = get_config()
@@ -121,7 +122,14 @@ def cmd_chat(args) -> int:
                         return 0
                     print(f"{RED}任务{msg.get('status')}{RESET}")
                     return 1
-    except ConnectionError as exc:
+    except ConnectionClosed as exc:
+        # 服务端主动关闭：4401=token 错误（契约 1.12），其余按异常断开处理
+        if getattr(getattr(exc, "rcvd", None), "code", None) == 4401:
+            print(f"{RED}token 错误（WS 4401），请检查 .env 的 JARVIS_TOKEN{RESET}")
+        else:
+            print(f"{RED}连接被服务端关闭：{exc}{RESET}")
+        return 1
+    except OSError as exc:  # ConnectionError 是 OSError 子类，一并覆盖网络类错误
         print(f"{RED}连不上贾维斯服务：{exc}{RESET}")
         return 1
 

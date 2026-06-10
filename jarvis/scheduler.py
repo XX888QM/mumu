@@ -27,6 +27,8 @@ class JarvisScheduler:
         self.db = db
         self.run_job = run_job
         self.scheduler = AsyncIOScheduler()
+        # trigger_now 创建的后台任务强引用（asyncio 只持弱引用，防 GC 丢任务）
+        self._bg_tasks: set[asyncio.Task] = set()
 
     def start(self) -> None:
         """启动调度器，并从数据库恢复全部 enabled=1 的定时任务。"""
@@ -71,7 +73,9 @@ class JarvisScheduler:
         job = self.db.get_cron(job_id)
         if job is None:
             raise ValueError(f"定时任务不存在: {job_id}")
-        asyncio.get_running_loop().create_task(self._execute(job_id))
+        task = asyncio.get_running_loop().create_task(self._execute(job_id))
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
 
     # ---------- 内部 ----------
 

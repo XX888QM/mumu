@@ -8,6 +8,7 @@
 """
 import asyncio
 import contextlib
+import hmac
 import json
 import logging
 import os
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
     app.state.running_sessions = set()    # 正在跑任务的会话 id（busy 判定）
     app.state.running_tasks = set()       # 正在跑的 task id（active_tasks 统计）
     app.state.cancelled_tasks = set()     # 已请求取消的 task id（cancelled 状态判定）
+    app.state.bg_tasks = set()            # 后台 asyncio.Task 强引用（防 GC 丢任务）
     app.state.started_at = time.monotonic()
 
     # db：测试可预注入 Fake，否则按契约 1.4 构造真库
@@ -108,6 +110,19 @@ app = FastAPI(title="J.A.R.V.I.S.", lifespan=lifespan)
 # ---------------------------------------------------------------------------
 # WS 广播与回调
 # ---------------------------------------------------------------------------
+
+def _spawn(coro) -> asyncio.Task:
+    """创建后台任务并持强引用。
+
+    asyncio 事件循环只持任务的弱引用，create_task 后不保存返回值的话，
+    运行中的任务可能被垃圾回收静默丢弃（官方文档明确警告）。
+    统一收口到 app.state.bg_tasks，完成后自动移除。
+    """
+    task = asyncio.create_task(coro)
+    app.state.bg_tasks.add(task)
+    task.add_done_callback(app.state.bg_tasks.discard)
+    return task
+
 
 async def _broadcast(message: dict) -> None:
     """向所有在线 WS 客户端广播一条 JSON；发送失败的连接直接剔除。"""
@@ -228,9 +243,13 @@ async def _run_cron_job(job: dict) -> None:
 # ---------------------------------------------------------------------------
 
 async def require_auth(request: Request) -> None:
-    """除 /healthz 外全部要求 Bearer token（契约 1.11）。"""
+    """除 /healthz 外全部要求 Bearer token（契约 1.11）。
+
+    用 hmac.compare_digest 做常数时间比较，避免逐字节短路泄露 token 前缀（时序攻击）。
+    """
     auth = request.headers.get("authorization", "")
-    if not settings.jarvis_token or auth != f"Bearer {settings.jarvis_token}":
+    expected = f"Bearer {settings.jarvis_token}"
+    if not settings.jarvis_token or not hmac.compare_digest(auth.encode(), expected.encode()):
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
@@ -302,8 +321,8 @@ async def chat(body: ChatIn, request: Request):
     st.running_sessions.add(session_id)
     st.running_tasks.add(task["id"])
     await _broadcast({"type": "task_started", "task": task})
-    # 后台执行，立即返回 202
-    asyncio.create_task(_run_task(task, body.message, session_id=session_id, thread_id=thread_id))
+    # 后台执行，立即返回 202（_spawn 持强引用，防任务被 GC）
+    _spawn(_run_task(task, body.message, session_id=session_id, thread_id=thread_id))
     return {"task_id": task["id"], "session_id": session_id}
 
 
@@ -477,7 +496,8 @@ async def healthz():
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     token = websocket.query_params.get("token", "")
-    if not settings.jarvis_token or token != settings.jarvis_token:
+    if not settings.jarvis_token or not hmac.compare_digest(
+            token.encode(), settings.jarvis_token.encode()):
         # 契约 1.12：token 错直接关闭 code 4401（先 accept 再关，确保客户端能读到关闭码）
         await websocket.accept()
         await websocket.close(code=4401)
