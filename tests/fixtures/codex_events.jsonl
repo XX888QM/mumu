@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"019eb332-306a-7ca3-b792-434c9f1351d7"}
+{"type":"turn.started"}
+2026-06-10T20:22:16.593274Z ERROR rmcp::transport::worker: worker quit with fatal noise line that must be ignored
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'echo JARVIS_TEST'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'echo JARVIS_TEST'","aggregated_output":"JARVIS_TEST\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"some_future_unknown_type","data":"parser must pass this through"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"大哥，上一条我回复的是：`在线`\n\n命令输出是：`JARVIS_TEST`"}}
+{"type":"turn.completed","usage":{"input_tokens":95260,"cached_input_tokens":41088,"output_tokens":358,"reasoning_output_tokens":266}}

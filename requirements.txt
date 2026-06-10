@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+apscheduler
+httpx
+mcp[cli]
+psutil
+python-dotenv
+pytest
+pytest-asyncio
+pillow

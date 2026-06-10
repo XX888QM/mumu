@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+logs/
+workspace/memory.md
+workspace/.codex/
+.pytest_cache/
+.DS_Store
