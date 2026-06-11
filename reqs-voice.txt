@@ -1,0 +1,9 @@
+openwakeword
+faster-whisper
+silero-vad
+sounddevice
+httpx
+websockets
+numpy
+pytest
+pytest-asyncio

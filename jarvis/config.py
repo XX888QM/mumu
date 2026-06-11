@@ -32,6 +32,15 @@ class Settings:
         self.venv_py = str(ROOT / ".venv" / "bin" / "python")
         # MCP 桥运行时凭据文件（0600，server 启动时写入）：token 不进子进程 argv
         self.runtime_file = str(ROOT / "data" / ".runtime.json")
+        # ---- Phase 2 语音（契约见 plans/2026-06-11-jarvis-phase2-voice.md 1.2）----
+        self.voice_enabled = g("VOICE_ENABLED", "1") not in ("0", "false", "")
+        self.tts_port = int(g("TTS_PORT", "8778"))
+        self.index_tts_dir = g("INDEX_TTS_DIR", "/Users/yunxin/Desktop/开发/index-tts")
+        self.voice_ref = g("VOICE_REF", str(ROOT / "workspace" / "voice" / "jarvis_ref.wav"))
+        self.asr_model = g("ASR_MODEL", "large-v3-turbo")
+        self.wake_threshold = float(g("WAKE_THRESHOLD", "0.5"))
+        self.venv_voice_py = str(ROOT / ".venv-voice" / "bin" / "python")
+        self.voice_cache_dir = str(ROOT / "data" / "voice_cache")
 
 
 settings = Settings()
