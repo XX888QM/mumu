@@ -1,4 +1,4 @@
-"""贾维斯 MCP 工具桥（独立 stdio 进程）。
+"""木木 MCP 工具桥（独立 stdio 进程）。
 
 由 codex 引擎按契约 1.7 以子进程方式拉起（FastMCP over stdio），
 赋予模型四种主动能力：申请授权 / 推送到大哥 iPhone / 创建定时任务 / 写长期记忆。
@@ -9,7 +9,7 @@
   token 不进程可见的命令行）。JARVIS_TASK_ID 始终来自环境变量。
   APPROVAL_TIMEOUT 可选（默认 1800 秒）。
 - 禁止 import jarvis 包其他模块——本文件必须能以脚本路径独立运行。
-- 用 httpx 同步客户端回调贾维斯服务，Header: Authorization: Bearer <token>。
+- 用 httpx 同步客户端回调木木服务，Header: Authorization: Bearer <token>。
 """
 
 import json
@@ -34,7 +34,7 @@ def _env(name: str) -> str:
     """读取必需环境变量，缺失时报清晰错误（点名缺哪个变量）。"""
     value = os.environ.get(name, "").strip()
     if not value:
-        raise RuntimeError(f"缺少环境变量 {name}：MCP 工具桥必须由贾维斯引擎注入 {name} 后启动")
+        raise RuntimeError(f"缺少环境变量 {name}：MCP 工具桥必须由木木引擎注入 {name} 后启动")
     return value
 
 
@@ -59,7 +59,7 @@ def _runtime_config() -> tuple[str, str]:
     if not path:
         raise RuntimeError(
             "缺少环境变量 JARVIS_RUNTIME（或 JARVIS_URL+JARVIS_TOKEN）："
-            "MCP 工具桥必须由贾维斯引擎注入后启动")
+            "MCP 工具桥必须由木木引擎注入后启动")
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -69,7 +69,7 @@ def _runtime_config() -> tuple[str, str]:
 
 
 def _client() -> httpx.Client:
-    """构造指向贾维斯服务的同步 httpx 客户端（带 Bearer 认证头）。"""
+    """构造指向木木服务的同步 httpx 客户端（带 Bearer 认证头）。"""
     url, token = _runtime_config()
     return httpx.Client(
         base_url=url,
@@ -118,7 +118,7 @@ def notify(title: str, body: str) -> str:
 
 @mcp.tool()
 def schedule_task(name: str, cron: str, prompt: str) -> str:
-    """创建定时任务。cron=标准5段表达式(分 时 日 月 周)，prompt=到点时交给贾维斯执行的完整指令。"""
+    """创建定时任务。cron=标准5段表达式(分 时 日 月 周)，prompt=到点时交给木木执行的完整指令。"""
     with _client() as client:
         resp = client.post("/api/internal/schedule", json={"name": name, "cron": cron, "prompt": prompt})
         resp.raise_for_status()

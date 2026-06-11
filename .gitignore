@@ -10,3 +10,4 @@ logs/
 tts-rt/
 workspace/.codex/
 workspace/memory.md
+/models/

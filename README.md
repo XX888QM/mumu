@@ -1,4 +1,4 @@
-# 贾维斯系统（J.A.R.V.I.S.）
+# 木木系统
 
 常驻 Mac 的 AI 管家：科幻网页控制台指挥 GPT-5.5（codex CLI）干活，支持实时执行过程展示、定时任务、分级授权（Bark 推送 / 控制台确认）和命令行入口。
 
@@ -37,7 +37,7 @@
 ### 方式一：一键安装（推荐，开机自启常驻）
 
 ```bash
-cd "/Users/yunxin/Desktop/开发/贾维斯系统"
+cd ~/jarvis
 /opt/homebrew/bin/python3.12 -m venv .venv          # 已有 venv 可跳过
 .venv/bin/pip install -r requirements.txt           # 已装过可跳过
 bash deploy/install.sh
@@ -54,7 +54,7 @@ bash deploy/uninstall.sh
 ### 方式二：手动前台运行（调试用）
 
 ```bash
-cd "/Users/yunxin/Desktop/开发/贾维斯系统"
+cd ~/jarvis
 .venv/bin/python -m uvicorn jarvis.server:app --host 0.0.0.0 --port 8777
 ```
 
@@ -89,16 +89,16 @@ cd "/Users/yunxin/Desktop/开发/贾维斯系统"
 
 ## 语音模式（Phase 2）
 
-喊一声 **"Jarvis"** 唤醒 → 说指令 → 贾维斯应声接活 → 办完用贾维斯音色播报结果；待批授权可直接开口说"批准/拒绝"。唤醒、断句、识别、合成全部本地推理，音频不出这台 Mac。
+喊一声 **"木木"** 唤醒（唤醒词是中文"木木"，sherpa-onnx KWS，关键词可在 voice/keywords.txt 调整）→ 说指令 → 木木应声接活 → 办完用木木音色播报结果；待批授权可直接开口说"批准/拒绝"。唤醒、断句、识别、合成全部本地推理，音频不出这台 Mac。
 
 ### 组成
 
 | 组件 | 进程 / 端口 | 说明 |
 |------|------------|------|
-| 语音守护 `voice/daemon.py` | LaunchAgent `com.yunxin.jarvis.voice`（`.venv-voice`） | openwakeword(hey_jarvis) 唤醒 + silero-vad 断句 + faster-whisper(large-v3-turbo) 转写，对接 :8777 主服务；播报中开口说话即可打断（免唤醒） |
-| TTS worker `voice/tts_worker.py` | LaunchAgent `com.yunxin.jarvis.tts`，仅绑 `127.0.0.1:8778` | IndexTTS-2 合成贾维斯音色，跑在 index-tts 仓库自带 venv；启动即暖机（模型加载约 20~30s） |
+| 语音守护 `voice/daemon.py` | LaunchAgent `com.yunxin.jarvis.voice`（`.venv-voice`） | sherpa-onnx KWS（kws-zipformer-wenetspeech 中文模型，唤醒词"木木"）唤醒 + silero-vad 断句 + faster-whisper(large-v3-turbo) 转写，对接 :8777 主服务；播报中开口说话即可打断（免唤醒） |
+| TTS worker `voice/tts_worker.py` | LaunchAgent `com.yunxin.jarvis.tts`，仅绑 `127.0.0.1:8778` | IndexTTS-2 合成木木音色，跑在 index-tts 仓库自带 venv；启动即暖机（模型加载约 20~30s） |
 | 服务端语音端点 | `POST /api/voice/transcribe`、`POST /api/voice/tts`（均要 Bearer） | 网页录音转写 / TTS 代理（worker 掉线返回 503） |
-| 网页控制台 | 输入框旁 🎤 按钮 + 顶栏"朗读"开关 | 按住说话、松开自动转写发送；开朗读后本会话任务完成自动播报摘要 |
+| 网页控制台 | 底部语音坞（反应堆 orb）+ 顶栏"朗读"开关 | 点击 orb 说话、再点结束自动转写发送；语音下令的任务完成自动播报；⌨ 键盘输入为兜底 |
 
 ### .env 语音变量
 
@@ -109,13 +109,13 @@ cd "/Users/yunxin/Desktop/开发/贾维斯系统"
 | `INDEX_TTS_DIR` | `/Users/yunxin/Desktop/开发/index-tts` | IndexTTS-2 仓库路径（自带 `.venv` 与 checkpoints） |
 | `VOICE_REF` | `workspace/voice/jarvis_ref.wav` | 参考音色；**换音色 = 换这个 wav（22050Hz 单声道）后重跑 install.sh** |
 | `ASR_MODEL` | `large-v3-turbo` | faster-whisper 模型（cpu int8） |
-| `WAKE_THRESHOLD` | `0.5` | 唤醒置信度阈值：误唤醒多 → 调大；唤不醒 → 调小 |
+| `WAKE_THRESHOLD` | `0.25` | 唤醒词检测阈值（sherpa-onnx keywords_threshold）：误唤醒多 → 调大（0.35-0.5）；唤不醒 → 调小 |
 
 ### 安装与使用
 
 - `bash deploy/install.sh`（VOICE_ENABLED=1 时）自动渲染并装载 `com.yunxin.jarvis.tts` / `com.yunxin.jarvis.voice` 两个 LaunchAgent，并对 `http://127.0.0.1:8778/healthz` 重试最长 2 分钟等模型就绪。
 - **首次启动 macOS 会弹麦克风授权窗，必须点允许**（之后在 系统设置 → 隐私与安全性 → 麦克风 可改）。
-- 流程：喊 "Jarvis" → 听到应答（如"在 / 大哥请讲"）→ 说指令 → 贾维斯确认接单，办完自动播报；正在忙时会提示稍等。
+- 流程：喊 "木木" → 听到应答（如"在 / 大哥请讲"）→ 说指令 → 木木确认接单，办完自动播报；正在忙时会提示稍等。
 
 ### 调试与排障
 
@@ -128,7 +128,7 @@ cd "/Users/yunxin/Desktop/开发/贾维斯系统"
 | TTS 健康检查 | `curl http://127.0.0.1:8778/healthz` |
 | 跑语音测试 | `.venv-voice/bin/python -m pytest tests/voice/ -v`；服务端语音端点 `.venv/bin/python -m pytest tests/test_voice_api.py -v` |
 
-常见问题：听不见播报 → 先 `curl :8778/healthz` 看 worker 是否在线、再查 `logs/tts.err.log`；唤不醒 → 确认麦克风权限已允许、调小 `WAKE_THRESHOLD`；网页 🎤 置灰 → 浏览器无麦克风权限或非安全上下文（localhost 不受限）。
+常见问题：听不见播报 → 先 `curl :8778/healthz` 看 worker 是否在线、再查 `logs/tts.err.log`；唤不醒 → 确认麦克风权限已允许、调小 `WAKE_THRESHOLD`；网页语音 orb 置灰 → 浏览器无麦克风权限或非安全上下文（localhost 不受限，此时自动展开键盘输入兜底）。
 
 ## 常见故障
 
@@ -149,7 +149,7 @@ jarvis/         后端：server / engine / db / approval / scheduler / push / mc
 voice/          语音侧：daemon / wake / asr / audio / acks / client / tts_worker
 web/            科幻控制台（纯静态，零构建）
 cli/jarvis      命令行入口
-workspace/      贾维斯工作区：AGENTS.md（人格）、memory.md（长期记忆）、voice/jarvis_ref.wav（音色）
+workspace/      木木工作区：AGENTS.md（人格）、memory.md（长期记忆）、voice/jarvis_ref.wav（音色）
 deploy/         LaunchAgent 模板 ×3（主服务/tts/voice）+ install.sh / uninstall.sh
 data/           SQLite 数据库（jarvis.db，WAL）、voice_cache/（应答语缓存）
 logs/           jarvis / tts / voice 的 .out.log 与 .err.log

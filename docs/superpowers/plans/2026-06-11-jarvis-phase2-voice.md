@@ -1,12 +1,12 @@
-# 贾维斯系统 Phase 2 语音实施计划（全屋钢铁侠版）
+# 木木系统 Phase 2 语音实施计划（全屋钢铁侠版）
 
 > **For agentic workers:** 多 agent 团队执行。只动所有权表分给你的文件；契约锁定；
 > 公共纪律沿用 Phase 1 计划（docs/superpowers/plans/2026-06-11-jarvis-phase1.md）第 2 节开头那段：
 > 先测试后实现、不 git 操作、汇报文件清单与测试结果。
 
-**Goal:** 喊"Jarvis"→说指令→贾维斯应声接活→办完贾维斯音色播报；语音授权；网页🎤；全本地推理。
+**Goal:** 喊"木木"→说指令→木木应声接活→办完木木音色播报；语音授权；网页🎤；全本地推理。
 
-**Tech:** openwakeword(hey_jarvis) + silero-vad + faster-whisper(large-v3-turbo) + IndexTTS-2(worker进程) + sounddevice。
+**Tech:** sherpa-onnx KWS（中文关键词"木木"）+ silero-vad + faster-whisper(large-v3-turbo) + IndexTTS-2(worker进程) + sounddevice。
 
 ---
 
@@ -17,7 +17,7 @@
   （首次合成 ~7s 含参考音色缓存）。故 tts_worker 启动后必须立即做一次暖机合成（结果丢弃）。
 - ⚠️ index-tts 仓库 examples/*.wav 是 Git LFS 指针（纯文本不可用，上游 LFS 配额超限拉不回）；
   参考音色已用真实 wav 落位 workspace/voice/jarvis_ref.wav（22050Hz mono PCM），勿用 examples/。
-- `.venv-voice`（python3.12）由脚手架建好，已装：openwakeword、faster-whisper、silero-vad、sounddevice、httpx、websockets、numpy、pytest、pytest-asyncio。
+- `.venv-voice`（python3.12）由脚手架建好，已装：sherpa-onnx（2026-06-11 替换 openwakeword）、faster-whisper、silero-vad、sounddevice、httpx、websockets、numpy、pytest、pytest-asyncio。
 - 唤醒模型与 whisper 模型已由脚手架预下载（whisper 走 HF_ENDPOINT=https://hf-mirror.com）。
 - Phase 1 契约全部沿用：REST/WS/认证/DB 不变；WS 认证=首消息 auth。
 - 服务器 venv（.venv）新增 faster-whisper（仅 /api/voice/transcribe 用，懒加载单例）。
@@ -44,7 +44,9 @@ TTS_PORT=8778              → settings.tts_port
 INDEX_TTS_DIR=/Users/yunxin/Desktop/开发/index-tts → settings.index_tts_dir
 VOICE_REF=<root>/workspace/voice/jarvis_ref.wav    → settings.voice_ref
 ASR_MODEL=large-v3-turbo   → settings.asr_model
-WAKE_THRESHOLD=0.5         → settings.wake_threshold
+WAKE_THRESHOLD=0.25        → settings.wake_threshold
+# 2026-06-11 修订：语义=sherpa-onnx keywords_threshold（默认 0.25；调大更难触发，
+# 有效区间 (0, 0.6]，超出 daemon 启动时告警）
 # 派生：settings.venv_voice_py、settings.voice_cache_dir=<root>/data/voice_cache
 ```
 
@@ -75,11 +77,14 @@ def record_until_silence(rec_stream, vad, max_sec=15.0, silence_ms=900,
                           pre_roll: list | None = None) -> "np.ndarray"
     # 从流收音直到连续静音 silence_ms 或 max_sec；pre_roll 为唤醒后已缓存块
 
-# voice/wake.py（openwakeword hey_jarvis）
+# voice/wake.py（sherpa-onnx KeywordSpotter：中文关键词"木木"，关键词表 voice/keywords.txt，
+#   模型 models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01）
 class WakeDetector:
-    def __init__(self, threshold: float): ...
-    def feed(self, chunk: "np.ndarray") -> float   # 返回当帧最高分；调用方比阈值
-    def reset(self) -> None
+    def __init__(self, threshold: float): ...      # threshold 即 sherpa keywords_threshold
+    def feed(self, chunk: "np.ndarray") -> float   # 2026-06-11 修订：命中返回 1.0、未命中 0.0
+                                                   # （触发判定在 KWS 内部完成；daemon 的
+                                                   #   score > wake_threshold 比较保持兼容）
+    def reset(self) -> None                        # 防回声二次触发（reset_stream）
 
 # voice/asr.py（faster-whisper）
 class Transcriber:
@@ -138,10 +143,18 @@ def pick(cache, key) -> str                        # 随机取一条；带{actio
   faster-whisper 懒加载单例（settings.asr_model，cpu int8）；解码靠 faster-whisper 自带 av。
 - `POST /api/voice/tts`（要 Bearer）：`{"text":"..."}` → 代理 `http://127.0.0.1:{tts_port}/tts` → 透传 audio/wav；
   worker 不可达 → 503 {"detail":"tts worker offline"}。
-- 网页：输入框旁 🎤 按钮——按住录（MediaRecorder audio/webm），松开→transcribe→文本入框并自动发送；
-  录音中反应堆变红脉冲。顶栏新增"朗读"开关（localStorage jarvis_speak=1）：开启时本会话 task_done →
-  fetch /api/voice/tts 播放（去 markdown 取前两句，与 daemon 摘要规则一致，抽成 app.js 函数 summarize(text)）。
-  浏览器无麦权限/非安全上下文 → 🎤 置灰带 title 提示。
+- 网页（2026-06-11 语音 HUD 修订，替代原"输入框旁 🎤 按住说话"方案）：
+  - 语音为主交互：聊天面板底部语音坞 `#voice-dock`（反应堆 orb `#voice-orb` + 状态字
+    `#voice-status`）；点击 orb 开录（MediaRecorder audio/webm，30s 上限），再点结束 →
+    transcribe → 转写文本**直接发送**（不经输入框）；录音中 orb 与顶栏反应堆红脉冲。
+  - 键盘是兜底：`#chat-form` 默认收起，`#kbd-toggle` 展开；麦不可用（非 localhost/HTTPS）
+    时 orb 置灰并自动展开键盘。
+  - 思考流：codex reasoning item（engine 加 model_reasoning_summary="detailed"）→
+    `.think-stream` 打字机逐字滚入（全局串行队列 typewriteQueued），任务完成自动折叠可展开；
+    回复文字同样打字机上屏后替换为富文本。
+  - 自动播报：语音发起的任务（state.voiceTasks 按 task_id 记账）完成后无视朗读开关自动
+    TTS 播报，且与 DOM 解耦（切会话也照播）；键盘发起的按"朗读"开关（localStorage
+    jarvis_speak=1）且仅限当前会话。摘要规则与 daemon 一致（summarize(text) 取前两句）。
 
 ### 1.7 V4：部署
 
@@ -175,7 +188,7 @@ def pick(cache, key) -> str                        # 随机取一条；带{actio
 1. 两套 pytest 全绿：`.venv/bin/python -m pytest tests/ -q`（Phase1 107 条不回归 + voice_api 新增）
    与 `.venv-voice/bin/python -m pytest tests/voice/ -q`。
 2. 起 tts_worker（真模型）→ curl /healthz → POST /tts 合成"测试"落盘 wav 验证 RIFF 头。
-3. `jarvis-voice --selftest` 真跑全绿（TTS↔ASR 闭环、hey_jarvis 加载与合成唤醒音频喂入、缓存生成）。
+3. `jarvis-voice --selftest` 真跑全绿（TTS↔ASR 闭环、sherpa-onnx KWS 模型加载与合成"木木"唤醒音频喂入、缓存生成）。
 4. `--once-from-wav`：TTS 合成"现在几点了"→ 喂入 → 断言 chat 任务创建并 done、播报 wav 落盘
    （Player 在 JARVIS_VOICE_FAKE_AUDIO=1 时把"播放"写文件而非出声——audio.py 留此测试钩子，V1 实现）。
 5. 语音授权闭环：curl 造 pending → daemon 收 approval_request →（fake audio 模式）合成"批准"喂入 → approval=approved。

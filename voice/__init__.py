@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""贾维斯语音侧组件包（运行于 .venv-voice，python3.12）。
+"""木木语音侧组件包（运行于 .venv-voice，python3.12）。
 
 模块一览（契约见 docs/superpowers/plans/2026-06-11-jarvis-phase2-voice.md 1.4/1.5）：
 - voice.audio  : Recorder / Player / SileroVAD / record_until_silence（sounddevice 16k 单声道 int16）
-- voice.wake   : WakeDetector（openwakeword hey_jarvis）
+- voice.wake   : WakeDetector（sherpa-onnx KWS，中文唤醒词"木木"）
 - voice.asr    : Transcriber（faster-whisper, cpu/int8）
 - voice.daemon : 语音守护状态机（V2）
 - voice.client : 对 jarvis-server 的 REST/WS 客户端（V2）

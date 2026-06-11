@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- 贾维斯 TTS worker LaunchAgent 模板（Phase 2）：
+	<!-- 木木 TTS worker LaunchAgent 模板（Phase 2）：
 	     IndexTTS-2 跑在 index-tts 仓库自带的 .venv 里，监听 127.0.0.1:TTS_PORT。
 	     双下划线占位符由 deploy/install.sh 从 .env 渲染后装入 ~/Library/LaunchAgents/。 -->
 	<key>Label</key>

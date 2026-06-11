@@ -1,5 +1,5 @@
 #!/bin/bash
-# 贾维斯系统卸载脚本：停止全部 LaunchAgent 并移除 plist（主服务 + Phase 2 语音两个）。
+# 木木系统卸载脚本：停止全部 LaunchAgent 并移除 plist（主服务 + Phase 2 语音两个）。
 # 只动 ~/Library/LaunchAgents/ 下的 plist，项目代码/数据/日志全部保留。
 set -euo pipefail
 

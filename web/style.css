@@ -1,7 +1,8 @@
 /* ==========================================================================
- * J.A.R.V.I.S. 控制台样式 — 视觉锁定（计划 1.14）：
+ * 木木控制台样式 — 视觉锁定（计划 1.14）：
  *   深空黑 #04080f / 全息青 #00e5ff / 蓝 #1e90ff / 扫描线+网格 / 等宽科技字体
  *   反应堆圆环：常态呼吸，.active 时加速旋转
+ * 2026-06-11 语音 HUD：#voice-dock 语音坞（orb 点击说话）+ .think-stream 思考流
  * 零依赖纯 CSS。
  * ========================================================================== */
 
@@ -409,17 +410,71 @@ input:focus, textarea:focus { border-color: rgba(0, 229, 255, 0.6); box-shadow: 
   #sysbar { max-width: none; }
 }
 
-/* ===== Phase 2 语音（契约 1.6）：🎤 按住说话 + 朗读开关 ===== */
-#mic-btn {
-  flex: none; min-width: 46px; padding: 8px 10px; font-size: 15px;
-  touch-action: none;           /* 手机按住不触发滚动/手势，pointer 事件才连贯 */
-  user-select: none; -webkit-user-select: none;
+/* ===== Phase 2 语音（契约 1.6，语音 HUD 修订）===== */
+
+/* 语音坞：聊天面板底部，orb 为主交互 */
+#voice-dock {
+  flex: none; display: grid; grid-template-columns: 56px 1fr 56px;
+  align-items: center; justify-items: center;
+  padding: 10px 14px 14px; border-top: 1px solid var(--border);
+  /* iPhone PWA（viewport-fit=cover）：orb 别压在 Home 指示条上 */
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  background: rgba(4, 12, 22, 0.7);
 }
-#mic-btn.recording {
-  color: var(--red); border-color: rgba(255, 59, 77, 0.85);
-  background: rgba(255, 59, 77, 0.12);
-  animation: pulse-red 1.2s ease-in-out infinite;
+.dock-center { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#voice-orb {
+  width: 86px; height: 86px; padding: 0; cursor: pointer;
+  background: none; border: none; border-radius: 50%;
+  filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.55));
+  transition: filter 0.2s, transform 0.15s;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
 }
+#voice-orb svg { width: 100%; height: 100%; display: block; }
+#voice-orb .seg-ring {
+  transform-box: fill-box; transform-origin: center;
+  animation: reactor-spin 14s linear infinite;
+}
+#voice-orb .core {
+  transform-box: fill-box; transform-origin: center;
+  animation: reactor-breathe 3.2s ease-in-out infinite;
+}
+#voice-orb:hover { filter: drop-shadow(0 0 18px rgba(0, 229, 255, 0.9)); transform: scale(1.04); }
+#voice-orb:disabled { cursor: not-allowed; filter: grayscale(0.8) drop-shadow(0 0 4px rgba(90, 122, 143, 0.4)); }
+#voice-orb.recording { filter: drop-shadow(0 0 20px rgba(255, 59, 77, 1)); }
+#voice-orb.recording circle { stroke: var(--red); }
+#voice-orb.recording .core { fill: #ff9aa4; animation-duration: 0.5s; }
+#voice-orb.recording .seg-ring { animation-duration: 1s; }
+#voice-status { font-size: 11px; letter-spacing: 2px; min-height: 14px; }
+#kbd-toggle {
+  justify-self: start; font-family: var(--font); font-size: 16px; line-height: 1;
+  color: var(--dim); background: none; border: 1px solid var(--border);
+  border-radius: 3px; padding: 6px 10px; cursor: pointer;
+  transition: color 0.15s, box-shadow 0.15s;
+}
+#kbd-toggle:hover { color: var(--cyan); box-shadow: 0 0 10px rgba(0, 229, 255, 0.3); }
+.dock-spacer { width: 40px; }
+
+/* 思考流：reasoning 打字机区（执行中实时滚动，完成后可折叠） */
+.think-stream {
+  border: 1px solid rgba(0, 229, 255, 0.16); border-left: 2px solid rgba(125, 244, 255, 0.55);
+  background: rgba(2, 12, 20, 0.72); border-radius: 3px;
+}
+.think-head {
+  padding: 7px 10px; font-size: 11px; letter-spacing: 1px; color: #7df4ff;
+  cursor: pointer; user-select: none;
+  text-shadow: 0 0 8px rgba(125, 244, 255, 0.5);
+}
+.think-body {
+  padding: 2px 10px 10px; display: flex; flex-direction: column; gap: 8px;
+  max-height: 300px; overflow-y: auto;
+}
+.think-seg {
+  font-size: 12px; line-height: 1.7; color: #9fd8e8; font-style: italic;
+  white-space: pre-wrap; word-break: break-word;
+}
+.think-stream.collapsed .think-body { display: none; }
+.think-stream.collapsed .think-head { color: var(--dim); text-shadow: none; }
+
 #btn-speak {
   font-family: var(--font); font-size: 15px; line-height: 1;
   color: var(--dim); background: none; border: 1px solid var(--border);

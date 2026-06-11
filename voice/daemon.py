@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""贾维斯语音守护进程（Phase 2 V2，契约 1.5 状态机语义锁定）。
+"""木木语音守护进程（Phase 2 V2，契约 1.5 状态机语义锁定）。
 
 状态机：
   LISTEN     rec.stream() 喂 WakeDetector；分 > threshold → WAKE
@@ -132,7 +132,8 @@ def _read_env_file(path: Path) -> dict[str, str]:
 class VoiceConfig:
     base_url: str
     token: str
-    wake_threshold: float = 0.5
+    # sherpa-onnx keywords_threshold 语义：默认 0.25；调大更难触发（防误唤醒 0.35-0.5）
+    wake_threshold: float = 0.25
     asr_model: str = "large-v3-turbo"
     voice_cache_dir: str = str(_ROOT / "data" / "voice_cache")
     session_file: str = str(_ROOT / "data" / "voice_session.json")
@@ -147,10 +148,15 @@ class VoiceConfig:
             return os.environ.get(key) or env.get(key) or default
 
         port = int(get("JARVIS_PORT", "8777"))
+        threshold = float(get("WAKE_THRESHOLD", "0.25"))
+        if not 0.0 < threshold <= 0.6:
+            # 实测 sherpa 概率上限不到 0.7：调到 0.7+ 唤醒会静默哑火（服务看着正常）
+            logger.warning("WAKE_THRESHOLD=%s 超出有效调参区间 (0, 0.6]，唤醒可能完全失效；"
+                           "误唤醒建议 0.35-0.5，漏唤醒调小", threshold)
         return cls(
             base_url=f"http://127.0.0.1:{port}",
             token=get("JARVIS_TOKEN", ""),
-            wake_threshold=float(get("WAKE_THRESHOLD", "0.5")),
+            wake_threshold=threshold,
             asr_model=get("ASR_MODEL", "large-v3-turbo"),
         )
 
@@ -173,7 +179,7 @@ class VoiceDaemon:
     """
 
     def __init__(self, client, player, wake, transcriber, vad, record_fn,
-                 recorder=None, cache=None, wake_threshold: float = 0.5,
+                 recorder=None, cache=None, wake_threshold: float = 0.25,
                  sample_rate: int = 16000, min_command_sec: float = 0.4,
                  pre_roll_blocks: int = 6):
         self.client = client
@@ -531,10 +537,10 @@ def selftest() -> int:
         import httpx
         resp = httpx.get(cfg.base_url + "/healthz", timeout=5)
         resp.raise_for_status()
-        return "jarvis-server 在线"
+        return "木木主服务在线"
 
     def c_tts():
-        data = client.tts("贾维斯语音自检")
+        data = client.tts("木木语音自检")
         assert data[:4] == b"RIFF" and len(data) > 1000, f"非 wav 或过短（{len(data)} 字节）"
         state["tts_wav"] = data
         return f"{len(data)} 字节 wav"
@@ -556,11 +562,14 @@ def selftest() -> int:
     def c_wake():
         from voice.wake import WakeDetector
         detector = WakeDetector(threshold=cfg.wake_threshold)
-        samples = _wav_to_int16_16k(client.tts("Hey Jarvis"))
+        samples = _wav_to_int16_16k(client.tts("木木"))
+        # KWS 离线喂入需尾部补静音（tail padding），否则末尾帧不出解码结果
+        samples = np.concatenate([samples, np.zeros(16000, dtype=np.int16)])
         best = 0.0
         for i in range(0, max(len(samples) - 1280, 1), 1280):
             best = max(best, float(detector.feed(samples[i:i + 1280])))
-        return f"合成唤醒音频最高分 {best:.3f}（阈值 {cfg.wake_threshold}）"
+        assert best > 0.5, "合成『木木』音频未触发唤醒（检查模型/keywords.txt/阈值）"
+        return f"合成『木木』音频成功触发唤醒（keywords_threshold={cfg.wake_threshold}）"
 
     def c_vad():
         from voice.audio import SileroVAD
@@ -651,7 +660,7 @@ def say(text: str) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="贾维斯语音守护进程（Phase 2）")
+    parser = argparse.ArgumentParser(description="木木语音守护进程（Phase 2）")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--selftest", action="store_true",
                        help="自检（不碰麦克风），全绿 exit 0")
@@ -673,7 +682,7 @@ def main(argv=None) -> int:
         return say(args.say)
 
     daemon = build_daemon()
-    logger.info("贾维斯语音守护启动：唤醒词 hey jarvis，阈值 %s", daemon.wake_threshold)
+    logger.info("木木语音守护启动：唤醒词 木木，keywords_threshold %s", daemon.wake_threshold)
     daemon.run_forever()
     return 0
 

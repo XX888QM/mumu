@@ -1,4 +1,4 @@
-"""贾维斯 HTTP/WS 服务：REST API + WebSocket 实时广播 + 静态控制台托管。
+"""木木 HTTP/WS 服务：REST API + WebSocket 实时广播 + 静态控制台托管。
 
 模块组装（实施计划 Task E 锁定）：
 - ``app = FastAPI()``，组件在 lifespan 中初始化并互相注入，全局单例放 ``app.state``。
@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
         app.state.scheduler.shutdown()
 
 
-app = FastAPI(title="J.A.R.V.I.S.", lifespan=lifespan)
+app = FastAPI(title="木木", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ async def _on_engine_event(task_id: str, event: dict) -> None:
 async def _on_approval_request(approval: dict) -> None:
     """新授权请求：WS 红卡 + Bark 时效推送。"""
     await _broadcast({"type": "approval_request", "approval": approval})
-    await _bark("贾维斯请求授权",
+    await _bark("木木请求授权",
                 f"[{approval.get('risk_level')}] {approval.get('action')}\n{approval.get('detail')}",
                 level="timeSensitive")
 
@@ -230,7 +230,7 @@ async def _run_task(task: dict, prompt: str, *, session_id: Optional[str] = None
         st.db.finish_task(task_id, status, error=error_text)
         if status == "failed":
             logger.warning("任务 %s 失败：%s", task_id, error_text)
-            await _bark("贾维斯任务失败", error_text[-300:])
+            await _bark("木木任务失败", error_text[-300:])
             low = error_text.lower()
             if "401" in low or "unauthorized" in low or "login" in low:
                 await _bark("大哥需要重新登录 codex", "codex login")

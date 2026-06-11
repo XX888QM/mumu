@@ -1,4 +1,4 @@
-"""贾维斯语音应答语料与本地 TTS 缓存（Phase 2 契约 1.5，锁定）。
+"""木木语音应答语料与本地 TTS 缓存（Phase 2 契约 1.5，锁定）。
 
 - ACKS：各场景应答句池（文案锁定，不得改动）
 - ensure_cache(tts_fn)：非模板句逐句合成存 data/voice_cache/<md5>.wav，

@@ -1,10 +1,12 @@
 #!/bin/bash
-# 贾维斯系统安装脚本（macOS）：渲染 LaunchAgent → 加载常驻服务 → 健康检查。
+# 木木系统安装脚本（macOS）：渲染 LaunchAgent → 加载常驻服务 → 健康检查。
 # Phase 2：VOICE_ENABLED=1 时额外装载 TTS worker（:TTS_PORT）与语音守护，共三个服务。
 # 幂等可重跑：重复执行 = 重新渲染 + 重载服务。
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# pwd -P 解析软链：从 ~/Desktop/开发/贾维斯系统 软链执行也渲染真实路径进 plist
+# （launchd 进程经 ~/Desktop 路径读文件会被 TCC 卡死，见 CLAUDE.md 血泪教训）
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 VENV_PY="$ROOT/.venv/bin/python"
 PLIST_SRC="$ROOT/deploy/com.yunxin.jarvis.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.yunxin.jarvis.plist"
@@ -132,6 +134,20 @@ case "$VOICE_ENABLED" in
             echo "错误: 缺少参考音色文件 ($VOICE_REF)" >&2
             exit 1
         fi
+        # 唤醒词 KWS 模型（models/ 不进 git，缺失时 voice 服务会 KeepAlive 崩溃循环）
+        KWS_DIR="$ROOT/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+        for f in tokens.txt \
+                 encoder-epoch-12-avg-2-chunk-16-left-64.onnx \
+                 decoder-epoch-12-avg-2-chunk-16-left-64.onnx \
+                 joiner-epoch-12-avg-2-chunk-16-left-64.onnx; do
+            if [ ! -f "$KWS_DIR/$f" ]; then
+                echo "错误: 缺少唤醒词 KWS 模型文件 ($KWS_DIR/$f)" >&2
+                echo "下载（走代理）:" >&2
+                echo "  curl -sL -x http://192.168.50.4:7890 -o /tmp/kws.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2" >&2
+                echo "  mkdir -p \"$ROOT/models\" && tar -xjf /tmp/kws.tar.bz2 -C \"$ROOT/models/\"" >&2
+                exit 1
+            fi
+        done
         mkdir -p "$ROOT/data/voice_cache"
 
         # 7.2 渲染并安装两个 plist
@@ -185,14 +201,14 @@ esac
 LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
 TOKEN_MASKED="${TOKEN:0:4}****${TOKEN: -4}"
 echo ""
-echo "================== 贾维斯系统在线 =================="
+echo "================== 木木系统在线 =================="
 echo "  本机控制台 : http://localhost:$PORT"
 if [ -n "$LAN_IP" ]; then
     echo "  局域网访问 : http://$LAN_IP:$PORT  (iPhone 同一 WiFi 可加主屏)"
 fi
 echo "  访问令牌   : $TOKEN_MASKED  (完整值见 $ROOT/.env 的 JARVIS_TOKEN)"
 if [ "$VOICE_ON" = "1" ]; then
-    echo "  语音服务   : TTS 127.0.0.1:$TTS_PORT + 唤醒词（喊一声 \"Jarvis\" 试试）"
+    echo "  语音服务   : TTS 127.0.0.1:$TTS_PORT + 唤醒词（喊一声 \"木木\" 试试）"
 fi
 echo "  卸载方式   : bash \"$ROOT/deploy/uninstall.sh\""
 echo "====================================================="

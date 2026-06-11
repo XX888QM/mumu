@@ -1,4 +1,4 @@
-"""贾维斯 SQLite 存储层。
+"""木木 SQLite 存储层。
 
 契约见实施计划 1.3(schema) / 1.4(公开接口)：
 - 同步 sqlite3，check_same_thread=False + 全局锁（self.lock）

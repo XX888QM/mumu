@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # 安全（计划第 4 节）：worker 只绑本机回环，不暴露局域网
 BIND_HOST = "127.0.0.1"
 # 暖机用短句（结果丢弃，只为预热参考音色缓存与计算图）
-WARMUP_TEXT = "贾维斯语音系统已就绪。"
+WARMUP_TEXT = "木木语音系统已就绪。"
 # 审查修复（high）：text 长度上限（与 jarvis/server.py MAX_TTS_TEXT 对齐的双层防线）
 # ——合成串行加锁，超长文本会无限占用 MPS/CPU 并把队列占死
 MAX_TEXT = 500

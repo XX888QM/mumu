@@ -87,7 +87,7 @@ class _RecorderStream:
 
 
 class Recorder:
-    """麦克风采集：16k 单声道 int16，默认 80ms 块（=1280 样本，openwakeword 推荐帧长）。"""
+    """麦克风采集：16k 单声道 int16，默认 80ms 块（=1280 样本；KWS 内部自动攒帧，块大小任意）。"""
 
     def __init__(self, sample_rate: int = SAMPLE_RATE, block_ms: int = 80):
         self.sample_rate = int(sample_rate)

@@ -1,4 +1,4 @@
-openwakeword
+sherpa-onnx
 faster-whisper
 silero-vad
 sounddevice

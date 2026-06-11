@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- 贾维斯系统 LaunchAgent 模板：双下划线占位符由 deploy/install.sh 从 .env 渲染后再装入 ~/Library/LaunchAgents/ -->
+	<!-- 木木系统 LaunchAgent 模板：双下划线占位符由 deploy/install.sh 从 .env 渲染后再装入 ~/Library/LaunchAgents/ -->
 	<key>Label</key>
 	<string>com.yunxin.jarvis</string>
 	<key>ProgramArguments</key>

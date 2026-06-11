@@ -1,5 +1,9 @@
 /* ==========================================================================
- * J.A.R.V.I.S. 控制台 app.js — 零依赖纯静态，对接契约 REST(1.11) + WS(1.12)
+ * 木木控制台 app.js — 零依赖纯静态，对接契约 REST(1.11) + WS(1.12)
+ *
+ * 2026-06-11 语音 HUD 改造：语音为主交互（#voice-orb 点击说话），键盘默认收起；
+ * codex reasoning 事件（model_reasoning_summary=detailed）以打字机滚入 .think-stream；
+ * 回复文字打字机上屏 + 语音发起的任务完成自动 TTS 播报。
  *
  * ── 事件 → DOM 映射表（README，先于代码锁定） ────────────────────────────────
  *
@@ -15,6 +19,7 @@
  *                                 item.completed 时追加 .ev-out（输出尾部）+ .ev-status（exit code）
  *                             event.item.type=agent_message     → .ev-say（中间消息文本）
  *                             event.item.type=mcp_tool_call     → .ev-mcp（"⚙ MCP 工具名"）
+ *                             event.item.type=reasoning         → .think-stream 打字机逐字滚入
  *                             其余 item 类型 / 其余 event 类型    → .ev-misc（仅显示 type 名）
  *                             event.type=turn.completed         → 暂存 usage 备显
  *  type=task_done         → .msg.jarvis 占位填入 result（换行+```代码块渲染）；
@@ -99,6 +104,56 @@ function toast(text, warn = false) {
   setTimeout(() => el.remove(), 3500);
 }
 
+/* ---------- 打字机引擎（思考流/回复上屏） ----------
+ * 全局串行队列：同一时刻只有一段在打，保证 思考段1 → 段2 → 回复 的顺序；
+ * 用 textContent 追加纯文本（天然防 XSS），富文本由调用方在 Promise 后替换。 */
+const _twQueue = [];
+let _twBusy = false;
+
+function typewriteQueued(el, text, charsPerTick = 2, scrollEl = null) {
+  return new Promise((resolve) => {
+    _twQueue.push({ el, text: String(text ?? ""), charsPerTick, scrollEl, resolve });
+    _twPump();
+  });
+}
+
+function _twPump() {
+  if (_twBusy) return;
+  const job = _twQueue.shift();
+  if (!job) return;
+  _twBusy = true;
+  const cur = document.createElement("span");
+  const cursor = document.createElement("span");
+  cursor.className = "cursor-blink";
+  cursor.textContent = "▍";
+  job.el.appendChild(cur);
+  job.el.appendChild(cursor);
+  let i = 0;
+  const t = setInterval(() => {
+    // 元素被移除（切会话清屏）或不可见（思考流被折叠 display:none）→ 立即补全收尾，
+    // 不让后续队列任务（如回复气泡）被隐形阻塞数十秒
+    if (!job.el.isConnected || job.el.offsetParent === null) { finish(); return; }
+    i += job.charsPerTick;
+    cur.textContent = job.text.slice(0, i);
+    if (job.scrollEl) job.scrollEl.scrollTop = job.scrollEl.scrollHeight;
+    scrollChat();
+    if (i >= job.text.length) finish();
+  }, 16);
+  function finish() {
+    clearInterval(t);
+    cur.textContent = job.text;
+    cursor.remove();
+    _twBusy = false;
+    job.resolve();
+    _twPump();
+  }
+}
+
+/* reasoning 摘要是 markdown 风（**标题** 等），思考流以纯文本滚动 */
+function stripMd(s) {
+  return String(s ?? "").replace(/\*\*([^*]*)\*\*/g, "$1").replace(/`([^`]*)`/g, "$1");
+}
+
 /* ---------- 全局状态 ---------- */
 const state = {
   token: "",
@@ -108,6 +163,7 @@ const state = {
   editingCronId: null, // 非空 = cron 表单处于编辑模式
   activeTab: "cron",
   speak: false,        // 朗读开关（localStorage jarvis_speak=1，契约 phase2 1.6）
+  voiceTasks: new Set(), // 语音发起的 task_id：完成后无视朗读开关自动播报
 };
 let ws = null;
 let pingTimer = null;
@@ -159,15 +215,16 @@ function showTokenOverlay(err = "") {
   $("#token-input").focus();
 }
 
-/* ---------- boot 开机动画（"J.A.R.V.I.S. 系统在线" 逐字打出） ---------- */
+/* ---------- boot 开机动画（"木木系统在线" 逐字打出） ---------- */
 const BOOT_LINES = [
-  "> J.A.R.V.I.S. 内核镜像加载 .............. OK",
+  "> 木木内核镜像加载 ...................... OK",
   "> 反应堆输出功率 100% .................... 稳定",
   "> 神经链路 / 全息矩阵同步 ................ 完成",
   "> 安全协议 / 授权网关 .................... 在线",
   "> 接入 codex 推理引擎 .................... 就绪",
+  "> 语音链路 / 唤醒词「木木」 .............. 监听",
 ];
-const BOOT_FINAL = "J.A.R.V.I.S. 系统在线";
+const BOOT_FINAL = "木木系统在线";
 let bootDone = false;
 
 function runBoot() {
@@ -264,7 +321,7 @@ function wsConnect() {
     let msg;
     try { msg = JSON.parse(e.data); } catch (_) { return; }
     switch (msg.type) {
-      case "auth_ok":           setLink(true); break;
+      case "auth_ok":           setLink(true); state.voiceTasks.clear(); break; // 重连后清残留（断线期间错过的 task_done）
       case "system":            renderSystem(msg.data); break;
       case "task_started":      onTaskStarted(msg.task); break;
       case "task_event":        onTaskEvent(msg.task_id, msg.event); break;
@@ -358,7 +415,7 @@ function newSession() {
 
 function showChatHint() {
   $("#chat-stream").innerHTML =
-    '<div class="chat-hint">// 新会话待命 — 输入指令，贾维斯随时效劳</div>';
+    '<div class="chat-hint">// 新会话待命 — 点击下方反应堆开口下令，木木随时效劳</div>';
 }
 
 /* ---------- 对话渲染 ---------- */
@@ -380,11 +437,12 @@ function scrollChat(force = false) {
   if (force || nearBottom) s.scrollTop = s.scrollHeight;
 }
 
-async function sendMessage() {
+async function sendMessage(textArg, opts = {}) {
+  // textArg 省略 = 从键盘输入框取；语音链路直接传转写文本（不经输入框）
   const input = $("#chat-input");
-  const text = input.value.trim();
+  const text = (textArg !== undefined ? textArg : input.value).trim();
   if (!text) return;
-  input.value = "";
+  if (textArg === undefined) input.value = "";
   appendMsg("user", text, new Date().toISOString());
   try {
     const body = { message: text };
@@ -394,10 +452,13 @@ async function sendMessage() {
       state.sessionId = r.session_id;
       loadSessions();
     }
+    if (opts.voice && r.task_id) state.voiceTasks.add(r.task_id);
     ensureTaskBlock({ id: r.task_id, session_id: r.session_id });
+    setVoiceStatus("执行中 // WORKING");
   } catch (e) {
     if (e.status === 409) toast("该会话已有任务执行中 // BUSY", true);
     else if (e.status !== 401) toast("发送失败: " + e.message, true);
+    setVoiceStatus("待命 // STANDBY");
   }
 }
 
@@ -413,7 +474,11 @@ function ensureTaskBlock(task) {
   const root = document.createElement("div");
   root.className = "task-block";
   root.innerHTML =
-    `<details class="exec-log" open>
+    `<div class="think-stream hidden">
+       <div class="think-head">◈ 思考 // REASONING</div>
+       <div class="think-body"></div>
+     </div>
+     <details class="exec-log" open>
        <summary><span class="spin">◌</span> 执行过程 // EXECUTING</summary>
        <div class="exec-body"></div>
      </details>
@@ -423,6 +488,8 @@ function ensureTaskBlock(task) {
 
   const blk = {
     root,
+    thinkWrap: root.querySelector(".think-stream"),
+    thinkBody: root.querySelector(".think-body"),
     details: root.querySelector("details"),
     summary: root.querySelector("summary"),
     execBody: root.querySelector(".exec-body"),
@@ -430,7 +497,11 @@ function ensureTaskBlock(task) {
     items: new Map(), // codex item.id -> DOM（item.started/completed 去重合并）
     usage: null,
     count: 0,
+    thinkCount: 0,
   };
+  // 思考区头部点击折叠/展开
+  blk.thinkWrap.querySelector(".think-head").addEventListener("click", () =>
+    blk.thinkWrap.classList.toggle("collapsed"));
   taskBlocks.set(task.id, blk);
 
   const buf = pendingEvents.get(task.id);
@@ -513,7 +584,20 @@ function appendExecEvent(blk, ev) {
         if (type === "item.completed") el.textContent += "  ✓";
         break;
       }
-      default: { // 未知 item 类型：原样显示 type（reasoning 等）
+      case "reasoning": {
+        // codex 思考摘要（整段 item.completed，无增量）→ 思考流打字机逐字滚入
+        if (type === "item.completed" && item.text) {
+          blk.thinkWrap.classList.remove("hidden");
+          blk.thinkCount++;
+          const seg = document.createElement("div");
+          seg.className = "think-seg";
+          blk.thinkBody.appendChild(seg);
+          setTaskStatus("思考中 // REASONING");
+          typewriteQueued(seg, stripMd(item.text), 3, blk.thinkBody);
+        }
+        break;
+      }
+      default: { // 未知 item 类型：原样显示 type
         if (type !== "item.completed" || !blk.items.has("misc_" + item.id)) {
           const el = document.createElement("div");
           el.className = "ev ev-misc";
@@ -545,21 +629,33 @@ function appendExecEvent(blk, ev) {
 function onTaskDone(msg) {
   const blk = taskBlocks.get(msg.task_id);
   pendingEvents.delete(msg.task_id);
+  const isVoice = state.voiceTasks.has(msg.task_id);
+  state.voiceTasks.delete(msg.task_id);
   if (blk) {
     const status = msg.status || "done";
     const result = msg.result || "";
     blk.bubble.classList.remove("pending");
     if (status === "done") {
-      blk.bubble.innerHTML = renderRich(result || "(无输出)");
+      // 回复打字机上屏（纯文本），打完替换为富文本最终态（代码块/行内码渲染）
+      blk.bubble.innerHTML = "";
+      typewriteQueued(blk.bubble, result || "(无输出)", 2).then(() => {
+        blk.bubble.innerHTML = renderRich(result || "(无输出)");
+        scrollChat();
+      });
     } else {
       blk.bubble.classList.add("failed");
       blk.bubble.innerHTML =
         `<b>${status === "cancelled" ? "⊘ 任务已取消" : "✗ 任务失败"}</b>` +
         (result ? "<br>" + renderRich(result) : "");
     }
-    // 折叠执行区
+    // 折叠执行区 + 思考流收起（头部可点击重新展开）
     blk.details.removeAttribute("open");
     blk.summary.innerHTML = `执行过程 // ${blk.count} 条事件`;
+    if (blk.thinkCount > 0) {
+      blk.thinkWrap.classList.add("collapsed");
+      blk.thinkWrap.querySelector(".think-head").textContent =
+        `◈ 思考过程 // ${blk.thinkCount} 段（点击展开）`;
+    }
     // usage tokens
     const usage = (msg.usage && Object.keys(msg.usage).length ? msg.usage : blk.usage) || {};
     if (Object.keys(usage).length) {
@@ -570,9 +666,14 @@ function onTaskDone(msg) {
         `out:${usage.output_tokens ?? 0}`;
       blk.root.appendChild(u);
     }
-    // 朗读开关开启时：本会话任务完成 → 摘要 → TTS 播报（blk 存在即本会话，契约 phase2 1.6）
-    if (state.speak && status === "done") speakText(summarize(result));
+    setTaskStatus("待命 // STANDBY"); // 仅本会话任务回写状态字，且不打断录音/播报
     scrollChat();
+  }
+  // 自动播报：语音发起的任务必播（与 DOM 解耦——切会话清掉 blk 也照播）；
+  // 键盘发起的按朗读开关、且仅限当前会话（契约 phase2 1.6）
+  if ((msg.status || "done") === "done") {
+    if (isVoice) speakText(summarize(msg.result || ""));
+    else if (state.speak && blk) speakText(summarize(msg.result || ""));
   }
   loadTasks();
   loadSessions(); // 会话 title/updated_at 可能已更新
@@ -804,11 +905,13 @@ function closeDrawers() {
 }
 
 /* ==========================================================================
- * Phase 2 语音（契约 phase2 计划 1.6）：🎤 按住说话 + 朗读开关
- *   🎤 pointerdown 开始 MediaRecorder(audio/webm) 录音（反应堆变红脉冲），
- *   松开 → POST /api/voice/transcribe → 文本入框并自动发送；
- *   朗读开关（localStorage jarvis_speak=1）：本会话 task_done → summarize() →
- *   POST /api/voice/tts → 播放贾维斯音色 wav。
+ * Phase 2 语音（契约 phase2 计划 1.6，2026-06-11 语音 HUD 修订）：
+ *   #voice-orb 点击开始 MediaRecorder(audio/webm) 录音（反应堆红脉冲+状态字），
+ *   再点结束（30s 上限兜底）→ POST /api/voice/transcribe → 转写文本直接发送
+ *   （不经输入框）；语音发起的任务完成自动 TTS 播报（无视朗读开关）。
+ *   键盘输入是兜底：#kbd-toggle 展开 #chat-form。
+ *   朗读开关（localStorage jarvis_speak=1）：键盘发起的 task_done → summarize()
+ *   → POST /api/voice/tts → 播放木木音色 wav。
  * ========================================================================== */
 
 /* 摘要规则（与 voice/daemon 一致，锁定）：去 markdown 符号，取前两句 */
@@ -828,9 +931,10 @@ function summarize(text) {
   return sentences.slice(0, 2).join("").trim();
 }
 
-/* ----- 🎤 按住说话 ----- */
-const REC_MAX_MS = 30000; // 按住忘了松的兜底上限
+/* ----- 语音坞：点击说话 ----- */
+const REC_MAX_MS = 30000; // 忘了点结束的兜底上限
 let micRecorder = null, micChunks = [], micStream = null, micTimer = null, micBusy = false;
+let micStarting = false; // getUserMedia await 窗口的重入守卫（双击 orb 防双路录音/麦克风泄漏）
 
 function micSupported() {
   // 非安全上下文（http 非 localhost）/老浏览器没有 mediaDevices 或 MediaRecorder
@@ -838,18 +942,46 @@ function micSupported() {
             navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 }
 
+function setVoiceStatus(text) {
+  const el = $("#voice-status");
+  if (el) el.textContent = text;
+}
+
+/* 语音链路（录音/转写/播报）活跃时，任务事件不准乱写状态字——
+ * 否则录音中任一 cron/他会话任务完成会把"聆听中"覆盖成"待命" */
+function voiceLineBusy() {
+  return !!(micRecorder || micStarting || micBusy ||
+            (speakAudio && !speakAudio.paused && !speakAudio.ended));
+}
+
+function setTaskStatus(text) {
+  if (!voiceLineBusy()) setVoiceStatus(text);
+}
+
 function setRecordingUI(on) {
-  $("#mic-btn").classList.toggle("recording", on);
+  $("#voice-orb").classList.toggle("recording", on);
   $("#reactor").classList.toggle("recording", on); // 录音中反应堆变红脉冲（契约 1.6）
+  if (on) setVoiceStatus("聆听中 // LISTENING（再点结束）");
+}
+
+/* orb 点击：空闲→开始录音；录音中→结束并转写 */
+function orbToggle() {
+  if (micBusy) return;
+  if (micRecorder) { micStop(); return; }
+  micStart();
 }
 
 async function micStart() {
-  if (micBusy || micRecorder) return;
+  if (micBusy || micRecorder || micStarting) return;
+  micStarting = true;
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (_) {
     toast("麦克风权限被拒绝，请在浏览器设置中允许", true);
+    setVoiceStatus("待命 // STANDBY");
     return;
+  } finally {
+    micStarting = false;
   }
   micChunks = [];
   const mime = (window.MediaRecorder.isTypeSupported &&
@@ -876,25 +1008,25 @@ async function onMicStop() {
   micRecorder = null;
   const blob = new Blob(micChunks, { type });
   micChunks = [];
-  if (blob.size < 1000) return; // 误触/过短，不浪费一次转写
+  if (blob.size < 1000) { setVoiceStatus("待命 // STANDBY"); return; } // 误触/过短
   micBusy = true;
-  const btn = $("#mic-btn");
-  btn.disabled = true;
-  btn.textContent = "…";
+  const orb = $("#voice-orb");
+  orb.disabled = true;
+  setVoiceStatus("识别中 // TRANSCRIBING");
   try {
     const text = await transcribeBlob(blob);
     if (text) {
-      $("#chat-input").value = text; // 文本入框并自动发送（契约 1.6）
-      await sendMessage();
+      await sendMessage(text, { voice: true }); // 转写文本直接发送（语音 HUD 修订）
     } else {
       toast("没听清，请再说一次", true);
+      setVoiceStatus("待命 // STANDBY");
     }
   } catch (e) {
     if (e.status !== 401) toast("语音识别失败: " + e.message, true);
+    setVoiceStatus("待命 // STANDBY");
   }
   micBusy = false;
-  btn.disabled = false;
-  btn.textContent = "🎤";
+  orb.disabled = false;
 }
 
 async function transcribeBlob(blob) {
@@ -925,7 +1057,7 @@ function setSpeak(on) {
   const btn = $("#btn-speak");
   btn.classList.toggle("on", state.speak);
   btn.textContent = state.speak ? "🔊" : "🔇";
-  btn.title = state.speak ? "朗读已开启：任务完成贾维斯音色播报" : "朗读已关闭";
+  btn.title = state.speak ? "朗读已开启：任务完成木木音色播报" : "朗读已关闭（语音下令仍自动播报）";
 }
 
 async function speakText(text) {
@@ -939,12 +1071,21 @@ async function speakText(text) {
       return;
     }
     const url = URL.createObjectURL(await res.blob());
-    if (speakAudio) { try { speakAudio.pause(); } catch (_) {} }
+    if (speakAudio) {
+      // 打断旧播报：pause 不触发 onended，blob URL 要在这里顺手回收
+      try { speakAudio.pause(); } catch (_) {}
+      if (speakAudio._url) { try { URL.revokeObjectURL(speakAudio._url); } catch (_) {} }
+    }
     speakAudio = new Audio(url);
-    speakAudio.onended = () => URL.revokeObjectURL(url);
+    speakAudio._url = url;
+    setVoiceStatus("播报中 // SPEAKING");
+    const cleanup = () => { URL.revokeObjectURL(url); setVoiceStatus("待命 // STANDBY"); };
+    speakAudio.onended = cleanup;
+    speakAudio.onerror = cleanup;
     await speakAudio.play();
   } catch (e) {
     if (e.status !== 401) toast("朗读失败: " + e.message, true);
+    setVoiceStatus("待命 // STANDBY");
   }
 }
 
@@ -992,18 +1133,19 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#btn-tasks-toggle").addEventListener("click", () => togglePanel("tasks"));
   $("#backdrop").addEventListener("click", closeDrawers);
 
-  // 语音：🎤 按住说话（契约 phase2 1.6）
-  const micBtn = $("#mic-btn");
+  // 语音坞：点击说话（契约 phase2 1.6，语音 HUD 修订）
+  const orb = $("#voice-orb");
   if (!micSupported()) {
-    micBtn.disabled = true; // 无麦权限 API / 非安全上下文 → 置灰带 title 提示
-    micBtn.title = "需要 HTTPS（或 localhost）且浏览器支持麦克风录音";
+    // 非安全上下文（局域网 http）/老浏览器 → orb 置灰，自动展开键盘兜底
+    orb.disabled = true;
+    orb.title = "需要 HTTPS（或 localhost）才能用浏览器麦克风";
+    setVoiceStatus("麦克风不可用（需 localhost/HTTPS）· 已展开键盘");
+    $("#chat-form").classList.remove("hidden");
   } else {
-    micBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); micStart(); });
-    micBtn.addEventListener("pointerup", micStop);
-    micBtn.addEventListener("pointerleave", micStop);
-    micBtn.addEventListener("pointercancel", micStop);
-    micBtn.addEventListener("contextmenu", (e) => e.preventDefault()); // 手机长按防弹菜单
+    orb.addEventListener("click", orbToggle);
   }
+  $("#kbd-toggle").addEventListener("click", () =>
+    $("#chat-form").classList.toggle("hidden"));
 
   // 语音：朗读开关（localStorage jarvis_speak）
   let speakSaved = "0";

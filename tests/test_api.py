@@ -456,7 +456,7 @@ def test_chat_failure_marks_failed_and_pushes(make_client):
     assert task["status"] == "failed"
     assert "引擎爆炸了" in task["error"]
     # 1.13 第4步：失败必须 bark_push
-    assert wait_for(lambda: any(p["title"] == "贾维斯任务失败" for p in env.pushes))
+    assert wait_for(lambda: any(p["title"] == "木木任务失败" for p in env.pushes))
     # 不应误触发重登提醒
     assert not any("重新登录" in p["title"] for p in env.pushes)
 
@@ -507,7 +507,7 @@ def test_task_cancel(make_client):
     task = wait_for_task(env.client, task_id)
     assert task["status"] == "cancelled"
     # 取消不算失败，不应推送失败通知
-    assert not any(p["title"] == "贾维斯任务失败" for p in env.pushes)
+    assert not any(p["title"] == "木木任务失败" for p in env.pushes)
 
     # 非 running → 404；不存在 → 404
     assert env.client.post(f"/api/tasks/{task_id}/cancel", headers=H).status_code == 404

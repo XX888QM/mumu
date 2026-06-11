@@ -52,6 +52,9 @@ class CodexEngine:
             "-C", settings.workspace, "--skip-git-repo-check",
             "-m", settings.jarvis_model, "-s", settings.jarvis_sandbox,
             "-c", f'model_reasoning_effort="{settings.jarvis_reasoning}"',
+            # gpt-5.5 默认 model_reasoning_summary=none → reasoning item 不进事件流；
+            # 控制台"思考流"依赖 detailed 摘要（contract 1.7 修订）
+            "-c", 'model_reasoning_summary="detailed"',
             "-c", f'mcp_servers.jarvis.command="{settings.venv_py}"',
             "-c", f'mcp_servers.jarvis.args=["{settings.jarvis_root}/jarvis/mcp_server.py"]',
             # token 不进 argv（ps 可见）：MCP 桥按 JARVIS_RUNTIME 指向的 0600 文件取 url/token

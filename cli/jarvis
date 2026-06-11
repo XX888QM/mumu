@@ -1,6 +1,6 @@
-#!/Users/yunxin/Desktop/开发/贾维斯系统/.venv/bin/python
+#!/Users/yunxin/jarvis/.venv/bin/python
 # -*- coding: utf-8 -*-
-"""贾维斯 CLI（实施计划 1.15）。
+"""木木 CLI（实施计划 1.15）。
 
 用法：
     jarvis "指令"               # 新会话发指令，WS 流式打印执行过程
@@ -52,8 +52,8 @@ def _headers(token: str) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="jarvis", description="贾维斯 CLI —— 大哥的命令行管家")
-    p.add_argument("message", nargs="?", help="发给贾维斯的指令")
+    p = argparse.ArgumentParser(prog="jarvis", description="木木 CLI —— 大哥的命令行管家")
+    p.add_argument("message", nargs="?", help="发给木木的指令")
     p.add_argument("-s", "--session", help="续会话的 session_id")
     p.add_argument("--status", action="store_true", help="打印系统状态")
     p.add_argument("--approvals", action="store_true", help="列出并决定 pending 授权")
@@ -132,7 +132,7 @@ def cmd_chat(args) -> int:
             print(f"{RED}连接被服务端关闭：{exc}{RESET}")
         return 1
     except OSError as exc:  # ConnectionError 是 OSError 子类，一并覆盖网络类错误
-        print(f"{RED}连不上贾维斯服务：{exc}{RESET}")
+        print(f"{RED}连不上木木服务：{exc}{RESET}")
         return 1
 
 
@@ -164,7 +164,7 @@ def cmd_status() -> int:
         ("codex", d["codex_auth"]),
         ("活动任务", str(d["active_tasks"])),
     ]
-    print(f"{CYAN}J.A.R.V.I.S. 系统状态{RESET}")
+    print(f"{CYAN}木木 系统状态{RESET}")
     print("-" * 30)
     for key, value in rows:
         print(f"{key:　<6}{value}")  # 全角空格对齐中文

@@ -1,7 +1,7 @@
 """Task D 测试：jarvis/mcp_server.py（MCP 工具桥）
 
 契约见实施计划 1.10 / 第2节 Task D：
-- 4 个工具对贾维斯服务的 HTTP 请求 method/path/headers/body 必须正确（httpx.MockTransport）
+- 4 个工具对木木服务的 HTTP 请求 method/path/headers/body 必须正确（httpx.MockTransport）
 - request_approval 轮询直到 approved（mock 序列 pending→pending→approved）
 - 环境变量缺失时报清晰错误
 - FastMCP 实例能 import 不崩、4 个工具全部注册

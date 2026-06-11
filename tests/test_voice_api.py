@@ -414,17 +414,21 @@ def test_web_dom_ids_cross_check():
     """新增 DOM id 在 index.html 与 app.js 双向对得上（沿用 F 的验法）。"""
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
-    for el_id in ("mic-btn", "btn-speak"):
+    for el_id in ("voice-orb", "voice-status", "kbd-toggle", "btn-speak"):
         assert f'id="{el_id}"' in html, f"index.html 缺 #{el_id}"
         assert f"#{el_id}" in js, f"app.js 未引用 #{el_id}"
-    # 关键行为锚点
+    # 关键行为锚点（2026-06-11 语音 HUD 修订：orb 点击说话 + 思考流打字机）
     assert "/api/voice/transcribe" in js
     assert "/api/voice/tts" in js
     assert "jarvis_speak" in js          # 朗读开关 localStorage key（契约 1.6）
-    assert "MediaRecorder" in js         # 按住录音用 MediaRecorder audio/webm
+    assert "MediaRecorder" in js         # orb 点击录音用 MediaRecorder audio/webm
     assert "function summarize" in js    # 摘要抽成函数（与 daemon 规则一致）
+    assert "typewriteQueued" in js       # 思考流/回复打字机引擎
+    assert '"reasoning"' in js           # codex 思考事件渲染分支
     css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
     assert ".reactor.recording" in css   # 录音中反应堆红脉冲
+    assert ".think-stream" in css        # 思考流样式
+    assert "#voice-orb" in css           # 语音坞 orb 样式
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")

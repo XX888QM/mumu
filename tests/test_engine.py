@@ -108,6 +108,7 @@ def _expected_cmd(task_id: str) -> list[str]:
         "-C", settings.workspace, "--skip-git-repo-check",
         "-m", settings.jarvis_model, "-s", settings.jarvis_sandbox,
         "-c", f'model_reasoning_effort="{settings.jarvis_reasoning}"',
+        "-c", 'model_reasoning_summary="detailed"',
         "-c", f'mcp_servers.jarvis.command="{settings.venv_py}"',
         "-c", f'mcp_servers.jarvis.args=["{settings.jarvis_root}/jarvis/mcp_server.py"]',
         # 安全修订：token 不进 argv，MCP 桥经 JARVIS_RUNTIME 凭据文件取 url/token

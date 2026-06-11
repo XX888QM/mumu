@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>J.A.R.V.I.S. // 贾维斯控制台</title>
+  <title>木木 // MUMU 控制台</title>
   <meta name="theme-color" content="#04080f">
   <!-- iPhone 加主屏支持 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="JARVIS">
+  <meta name="apple-mobile-web-app-title" content="木木">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon-180.png">
@@ -49,7 +49,7 @@
           <circle class="core" cx="50" cy="50" r="15" fill="#aef6ff"/>
         </svg>
       </div>
-      <h1 class="glow-title">J.A.R.V.I.S.</h1>
+      <h1 class="glow-title">木木</h1>
       <p class="dim">身份验证 // ACCESS TOKEN REQUIRED</p>
       <input id="token-input" type="password" autocomplete="off" placeholder="输入访问令牌">
       <button id="token-submit" class="btn btn-primary">接入系统 // CONNECT</button>
@@ -93,7 +93,7 @@
             <circle class="core" cx="50" cy="50" r="15" fill="#aef6ff"/>
           </svg>
         </div>
-        <span class="brand-name glow-title">J.A.R.V.I.S.</span>
+        <span class="brand-name glow-title">木木</span>
       </div>
       <div class="bar-right">
         <div id="sysbar">
@@ -116,12 +116,28 @@
         <div id="session-list" class="plist"></div>
       </aside>
 
-      <!-- 中：对话流 -->
+      <!-- 中：对话流（语音为主交互；键盘是兜底，默认收起） -->
       <section id="chat-panel">
         <div id="chat-stream"></div>
-        <form id="chat-form" autocomplete="off">
-          <textarea id="chat-input" rows="2" placeholder="向贾维斯下达指令…（Enter 发送 / Shift+Enter 换行）"></textarea>
-          <button type="button" id="mic-btn" class="btn" title="按住说话">🎤</button>
+        <div id="voice-dock">
+          <button id="kbd-toggle" type="button" title="键盘输入（兜底）">⌨</button>
+          <div class="dock-center">
+            <button id="voice-orb" type="button" title="点击说话 / 再点结束" aria-label="语音输入">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle class="ring-outer" cx="50" cy="50" r="46" fill="none" stroke="#00e5ff" stroke-width="1.5" opacity=".65"/>
+                <g class="seg-ring">
+                  <circle cx="50" cy="50" r="35" fill="none" stroke="#00e5ff" stroke-width="7" stroke-dasharray="13.6 4.7" opacity=".9"/>
+                </g>
+                <circle class="ring-inner" cx="50" cy="50" r="25" fill="none" stroke="#1e90ff" stroke-width="1.5" opacity=".6"/>
+                <circle class="core" cx="50" cy="50" r="15" fill="#aef6ff"/>
+              </svg>
+            </button>
+            <div id="voice-status" class="dim">待命 // STANDBY</div>
+          </div>
+          <span class="dock-spacer" aria-hidden="true"></span>
+        </div>
+        <form id="chat-form" class="hidden" autocomplete="off">
+          <textarea id="chat-input" rows="2" placeholder="向木木下达指令…（Enter 发送 / Shift+Enter 换行）"></textarea>
           <button type="submit" id="chat-send" class="btn btn-primary">发送</button>
         </form>
       </section>

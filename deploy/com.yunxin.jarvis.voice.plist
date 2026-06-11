@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- 贾维斯语音守护 LaunchAgent 模板（Phase 2）：
+	<!-- 木木语音守护 LaunchAgent 模板（Phase 2）：
 	     唤醒词监听 + 录音转写 + 对接 jarvis-server 的常驻进程，跑在 .venv-voice。
 	     双下划线占位符由 deploy/install.sh 渲染后装入 ~/Library/LaunchAgents/。 -->
 	<key>Label</key>
