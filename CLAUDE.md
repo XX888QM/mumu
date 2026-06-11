@@ -1,12 +1,28 @@
 # 贾维斯系统（J.A.R.V.I.S.）项目规则
 
 ## 部署坐标（线上真值以实际进程/配置为准）
-- 服务：LaunchAgent `com.yunxin.jarvis`（KeepAlive 常驻，开机自启），uvicorn 跑 `jarvis.server:app`
-- 端口：8777（监听 0.0.0.0，局域网可访问）；控制台 http://localhost:8777
+- **项目真实位置：`~/jarvis`**；`~/Desktop/开发/贾维斯系统` 是指向它的软链
+  （搬迁原因见下方"TCC 血泪教训"，勿搬回 Desktop）
+- 三个 LaunchAgent（均 KeepAlive 常驻开机自启）：
+  `com.yunxin.jarvis`（主服务 8777）/ `com.yunxin.jarvis.tts`（TTS worker 127.0.0.1:8778）/
+  `com.yunxin.jarvis.voice`（语音守护：唤醒词 hey jarvis → ASR → chat → TTS 播报）
+- 端口：8777（监听 0.0.0.0 局域网）；控制台 http://localhost:8777
 - 访问令牌：`.env` 的 `JARVIS_TOKEN`（只打印掩码）
-- 日志：`logs/jarvis.{out,err}.log`；数据库：`data/jarvis.db`（SQLite WAL）
-- 重启：`launchctl unload ~/Library/LaunchAgents/com.yunxin.jarvis.plist && launchctl load 同路径`，或重跑 `bash deploy/install.sh`（幂等）
-- 卸载：`bash deploy/uninstall.sh`
+- 日志：`logs/{jarvis,tts,voice}.{out,err}.log`；数据库：`data/jarvis.db`（SQLite WAL）
+- 重启/重装：`bash deploy/install.sh`（幂等）；卸载：`bash deploy/uninstall.sh`
+- TTS 运行时：`tts-rt/`＝APFS 克隆的 checkpoints（零空间）+ uv py3.10 独立 venv；
+  大哥的 `~/Desktop/开发/index-tts` 项目本体未动
+- 语音旋钮（.env）：`WAKE_THRESHOLD`（唤醒灵敏度，默认 0.5，不灵敏调 0.35-0.4）、
+  换音色＝替换 `workspace/voice/jarvis_ref.wav` 后重启 tts 服务
+
+## TCC 血泪教训（macOS launchd 必读）
+- **launchd 拉起的进程读 ~/Desktop（及 Documents/Downloads）下文件会被 TCC 卡死在内核 open()**：
+  uv 管理的 python 解释器 venv 在 Desktop 下时连 Py_Initialize 都过不去（site 读 .pth 即挂）。
+  **终端手动跑正常 ≠ launchd 正常**（终端会话有宿主 App 的 TCC 权限）。
+- 解法＝运行时全部迁出 TCC 保护区（本项目因此搬到 ~/jarvis）。常驻服务永远别部署在 Desktop。
+- 麦克风是独立 TCC 权限：python 首次开麦需大哥在 系统设置→隐私与安全性→麦克风 放行。
+- 多 agent 教训：队员 `git add -A` 曾把两万个 venv 文件提交进仓库（.gitignore 漏了 .venv-voice），
+  已 filter-branch 清洗。**收队员提交必须看 `git show --stat`。**
 
 ## 架构速查
 - 引擎：`codex exec --json --ignore-user-config`（GPT-5.5，ChatGPT Pro 订阅，非 API）；resume 续会话
