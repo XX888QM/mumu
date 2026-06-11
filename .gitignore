@@ -2,6 +2,7 @@ __pycache__/
 .DS_Store
 .env
 .pytest_cache/
+.venv-voice/
 .venv/
 *.pyc
 data/
