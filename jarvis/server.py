@@ -21,10 +21,17 @@ from typing import Literal, Optional
 import psutil
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketDisconnect
 
 from jarvis.config import settings
+
+# ---- Phase 2 语音路由段所需 import（契约 phase2 1.6；本段及文末 voice 路由段为纯新增）----
+import io
+import threading
+
+import httpx
+from fastapi import File, Response, UploadFile
 
 # 让 jarvis.* 的 INFO 日志可见（如 Bark 降级记录）；root 已有 handler 时为 no-op
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -491,6 +498,90 @@ async def internal_remember(body: RememberIn):
 
 
 app.include_router(router)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 语音路由段（契约 phase2 计划 1.6；纯新增，不动既有代码）
+#   POST /api/voice/transcribe  multipart file(webm/wav) → {"text": "..."}
+#   POST /api/voice/tts         {"text": "..."} → 代理 tts_worker → audio/wav
+# ---------------------------------------------------------------------------
+
+# 审查修复（high）：上传音频大小上限——无上限时持 token 客户端可发 GB 级 body
+# 把整文件读进内存打 OOM（DoS）。25MB ≈ 25 分钟 16kHz mono webm，足够口述指令。
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+# 审查修复（high）：TTS 文本长度上限——tts_worker 串行加锁，超长文本会把合成
+# 队列占死（DoS）。500 字远超两句摘要/授权提示所需；worker 端同样设防（双层防线）。
+MAX_TTS_TEXT = 500
+
+
+class VoiceTtsIn(BaseModel):
+    text: str = Field(..., max_length=MAX_TTS_TEXT)
+
+
+# faster-whisper 懒加载单例（settings.asr_model，cpu int8）：首次调用才加载，不拖慢服务启动
+_whisper_model = None
+_whisper_load_lock = threading.Lock()   # 单例构造锁
+_whisper_infer_lock = threading.Lock()  # 推理串行锁（保守起见不并发跑同一模型）
+
+
+def _get_whisper():
+    """懒加载 faster-whisper 单例（契约 1.6）。测试 monkeypatch 本函数注入伪模型。"""
+    global _whisper_model
+    with _whisper_load_lock:
+        if _whisper_model is None:
+            from faster_whisper import WhisperModel
+            logger.info("加载 faster-whisper 模型 %s (cpu, int8) ...", settings.asr_model)
+            _whisper_model = WhisperModel(settings.asr_model, device="cpu", compute_type="int8")
+    return _whisper_model
+
+
+def _transcribe_bytes(data: bytes) -> str:
+    """webm/wav 字节 → 中文文本。解码靠 faster-whisper 自带 av；跑在线程池里调用。"""
+    model = _get_whisper()
+    with _whisper_infer_lock:
+        segments, _info = model.transcribe(io.BytesIO(data), language="zh")
+        return "".join(seg.text for seg in segments).strip()
+
+
+def _tts_client() -> httpx.AsyncClient:
+    """tts 代理用的 httpx 客户端工厂。测试 monkeypatch 本函数注入 MockTransport。"""
+    return httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=3.0))
+
+
+voice_router = APIRouter(prefix="/api/voice", dependencies=[Depends(require_auth)])
+
+
+@voice_router.post("/transcribe")
+async def voice_transcribe(file: UploadFile = File(...)):
+    # 审查修复：限量读取（多读 1 字节用于判超），超限 413——防超大音频整块进内存
+    data = await file.read(MAX_AUDIO_BYTES + 1)
+    if len(data) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="audio file too large")
+    if not data:
+        raise HTTPException(status_code=422, detail="empty audio")
+    text = await asyncio.to_thread(_transcribe_bytes, data)
+    return {"text": text}
+
+
+@voice_router.post("/tts")
+async def voice_tts(body: VoiceTtsIn):
+    url = f"http://127.0.0.1:{settings.tts_port}/tts"
+    try:
+        async with _tts_client() as client:
+            resp = await client.post(url, json={"text": body.text})
+    except httpx.HTTPError:  # 连接拒绝/超时等 → worker 离线（契约 1.6）
+        raise HTTPException(status_code=503, detail="tts worker offline")
+    if resp.status_code != 200:  # worker 合成失败（500 JSON）→ 以 502 透出错误信息
+        try:
+            err = resp.json().get("error", "")
+        except Exception:
+            err = ""
+        raise HTTPException(status_code=502, detail=f"tts worker error: {err or resp.status_code}")
+    return Response(content=resp.content, media_type="audio/wav")
+
+
+app.include_router(voice_router)
 
 
 # ---------------------------------------------------------------------------

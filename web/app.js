@@ -107,6 +107,7 @@ const state = {
   approvals: [],       // 授权请求 FIFO 队列
   editingCronId: null, // 非空 = cron 表单处于编辑模式
   activeTab: "cron",
+  speak: false,        // 朗读开关（localStorage jarvis_speak=1，契约 phase2 1.6）
 };
 let ws = null;
 let pingTimer = null;
@@ -569,6 +570,8 @@ function onTaskDone(msg) {
         `out:${usage.output_tokens ?? 0}`;
       blk.root.appendChild(u);
     }
+    // 朗读开关开启时：本会话任务完成 → 摘要 → TTS 播报（blk 存在即本会话，契约 phase2 1.6）
+    if (state.speak && status === "done") speakText(summarize(result));
     scrollChat();
   }
   loadTasks();
@@ -800,6 +803,151 @@ function closeDrawers() {
   $("#backdrop").classList.add("hidden");
 }
 
+/* ==========================================================================
+ * Phase 2 语音（契约 phase2 计划 1.6）：🎤 按住说话 + 朗读开关
+ *   🎤 pointerdown 开始 MediaRecorder(audio/webm) 录音（反应堆变红脉冲），
+ *   松开 → POST /api/voice/transcribe → 文本入框并自动发送；
+ *   朗读开关（localStorage jarvis_speak=1）：本会话 task_done → summarize() →
+ *   POST /api/voice/tts → 播放贾维斯音色 wav。
+ * ========================================================================== */
+
+/* 摘要规则（与 voice/daemon 一致，锁定）：去 markdown 符号，取前两句 */
+function summarize(text) {
+  let t = String(text ?? "");
+  t = t.replace(/```[\s\S]*?```/g, " ");          // 代码块整段丢弃（没法朗读）
+  t = t.replace(/`([^`\n]*)`/g, "$1");            // 行内代码去反引号
+  t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, " ");    // 图片语法丢弃
+  t = t.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");  // 链接只留文字
+  t = t.replace(/^\s*\|.*\|\s*$/gm, " ");         // 表格行整行丢弃
+  t = t.replace(/^[\s>#*+-]+/gm, "");             // 行首引用/标题/列表符号
+  t = t.replace(/[*_~#|]+/g, "");                 // 余下强调/表格符号
+  t = t.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  const sentences = (t.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [t])
+    .map((s) => s.trim()).filter(Boolean);
+  return sentences.slice(0, 2).join("").trim();
+}
+
+/* ----- 🎤 按住说话 ----- */
+const REC_MAX_MS = 30000; // 按住忘了松的兜底上限
+let micRecorder = null, micChunks = [], micStream = null, micTimer = null, micBusy = false;
+
+function micSupported() {
+  // 非安全上下文（http 非 localhost）/老浏览器没有 mediaDevices 或 MediaRecorder
+  return !!(window.isSecureContext && navigator.mediaDevices &&
+            navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+}
+
+function setRecordingUI(on) {
+  $("#mic-btn").classList.toggle("recording", on);
+  $("#reactor").classList.toggle("recording", on); // 录音中反应堆变红脉冲（契约 1.6）
+}
+
+async function micStart() {
+  if (micBusy || micRecorder) return;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (_) {
+    toast("麦克风权限被拒绝，请在浏览器设置中允许", true);
+    return;
+  }
+  micChunks = [];
+  const mime = (window.MediaRecorder.isTypeSupported &&
+                MediaRecorder.isTypeSupported("audio/webm")) ? "audio/webm" : "";
+  micRecorder = mime ? new MediaRecorder(micStream, { mimeType: mime })
+                     : new MediaRecorder(micStream); // Safari 给 mp4，服务端 av 都能解
+  micRecorder.ondataavailable = (e) => { if (e.data && e.data.size) micChunks.push(e.data); };
+  micRecorder.onstop = onMicStop;
+  micRecorder.start();
+  setRecordingUI(true);
+  clearTimeout(micTimer);
+  micTimer = setTimeout(micStop, REC_MAX_MS);
+}
+
+function micStop() {
+  clearTimeout(micTimer);
+  if (micRecorder && micRecorder.state !== "inactive") micRecorder.stop();
+}
+
+async function onMicStop() {
+  setRecordingUI(false);
+  if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+  const type = (micRecorder && micRecorder.mimeType) || "audio/webm";
+  micRecorder = null;
+  const blob = new Blob(micChunks, { type });
+  micChunks = [];
+  if (blob.size < 1000) return; // 误触/过短，不浪费一次转写
+  micBusy = true;
+  const btn = $("#mic-btn");
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    const text = await transcribeBlob(blob);
+    if (text) {
+      $("#chat-input").value = text; // 文本入框并自动发送（契约 1.6）
+      await sendMessage();
+    } else {
+      toast("没听清，请再说一次", true);
+    }
+  } catch (e) {
+    if (e.status !== 401) toast("语音识别失败: " + e.message, true);
+  }
+  micBusy = false;
+  btn.disabled = false;
+  btn.textContent = "🎤";
+}
+
+async function transcribeBlob(blob) {
+  const fd = new FormData();
+  fd.append("file", blob, "speech.webm");
+  // 不走 api()：FormData 必须让浏览器自带 multipart boundary，不能手设 Content-Type
+  const res = await fetch("/api/voice/transcribe", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + state.token },
+    body: fd,
+  });
+  if (res.status === 401) { authFail(); const e = new Error("unauthorized"); e.status = 401; throw e; }
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).detail || ""; } catch (_) {}
+    const e = new Error(detail || ("HTTP " + res.status)); e.status = res.status; throw e;
+  }
+  const data = await res.json();
+  return String(data.text || "").trim();
+}
+
+/* ----- 朗读开关 + TTS 播放 ----- */
+let speakAudio = null;
+
+function setSpeak(on) {
+  state.speak = !!on;
+  try { localStorage.setItem("jarvis_speak", state.speak ? "1" : "0"); } catch (_) {}
+  const btn = $("#btn-speak");
+  btn.classList.toggle("on", state.speak);
+  btn.textContent = state.speak ? "🔊" : "🔇";
+  btn.title = state.speak ? "朗读已开启：任务完成贾维斯音色播报" : "朗读已关闭";
+}
+
+async function speakText(text) {
+  // 钳到 500 字：与服务端 /api/voice/tts 的 max_length 对齐（超长会 422 整段播不出）
+  text = String(text || "").trim().slice(0, 500);
+  if (!text) return;
+  try {
+    const res = await api("/api/voice/tts", { method: "POST", body: { text } });
+    if (!res.ok) {
+      toast(res.status === 503 ? "TTS worker 离线，无法朗读" : "朗读失败 HTTP " + res.status, true);
+      return;
+    }
+    const url = URL.createObjectURL(await res.blob());
+    if (speakAudio) { try { speakAudio.pause(); } catch (_) {} }
+    speakAudio = new Audio(url);
+    speakAudio.onended = () => URL.revokeObjectURL(url);
+    await speakAudio.play();
+  } catch (e) {
+    if (e.status !== 401) toast("朗读失败: " + e.message, true);
+  }
+}
+
 /* ---------- 事件绑定 ---------- */
 document.addEventListener("DOMContentLoaded", () => {
   runBoot();
@@ -843,4 +991,23 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#btn-sessions-toggle").addEventListener("click", () => togglePanel("sessions"));
   $("#btn-tasks-toggle").addEventListener("click", () => togglePanel("tasks"));
   $("#backdrop").addEventListener("click", closeDrawers);
+
+  // 语音：🎤 按住说话（契约 phase2 1.6）
+  const micBtn = $("#mic-btn");
+  if (!micSupported()) {
+    micBtn.disabled = true; // 无麦权限 API / 非安全上下文 → 置灰带 title 提示
+    micBtn.title = "需要 HTTPS（或 localhost）且浏览器支持麦克风录音";
+  } else {
+    micBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); micStart(); });
+    micBtn.addEventListener("pointerup", micStop);
+    micBtn.addEventListener("pointerleave", micStop);
+    micBtn.addEventListener("pointercancel", micStop);
+    micBtn.addEventListener("contextmenu", (e) => e.preventDefault()); // 手机长按防弹菜单
+  }
+
+  // 语音：朗读开关（localStorage jarvis_speak）
+  let speakSaved = "0";
+  try { speakSaved = localStorage.getItem("jarvis_speak") || "0"; } catch (_) {}
+  setSpeak(speakSaved === "1");
+  $("#btn-speak").addEventListener("click", () => setSpeak(!state.speak));
 });

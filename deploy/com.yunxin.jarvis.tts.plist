@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 贾维斯 TTS worker LaunchAgent 模板（Phase 2）：
+	     IndexTTS-2 跑在 index-tts 仓库自带的 .venv 里，监听 127.0.0.1:TTS_PORT。
+	     双下划线占位符由 deploy/install.sh 从 .env 渲染后装入 ~/Library/LaunchAgents/。 -->
+	<key>Label</key>
+	<string>com.yunxin.jarvis.tts</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__INDEX_TTS_DIR__/.venv/bin/python</string>
+		<string>__JARVIS_ROOT__/voice/tts_worker.py</string>
+	</array>
+	<!-- IndexTTS2 按相对路径找 checkpoints/，工作目录必须是 index-tts 仓库根 -->
+	<key>WorkingDirectory</key>
+	<string>__INDEX_TTS_DIR__</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>__JARVIS_ROOT__/logs/tts.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>__JARVIS_ROOT__/logs/tts.err.log</string>
+	<!-- worker 配置全部走环境变量（契约 1.3）；LaunchAgent 默认 PATH 极简，顺手补全 -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>INDEX_TTS_DIR</key>
+		<string>__INDEX_TTS_DIR__</string>
+		<key>VOICE_REF</key>
+		<string>__VOICE_REF__</string>
+		<key>TTS_PORT</key>
+		<string>__TTS_PORT__</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+</dict>
+</plist>

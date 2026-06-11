@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 贾维斯语音守护 LaunchAgent 模板（Phase 2）：
+	     唤醒词监听 + 录音转写 + 对接 jarvis-server 的常驻进程，跑在 .venv-voice。
+	     双下划线占位符由 deploy/install.sh 渲染后装入 ~/Library/LaunchAgents/。 -->
+	<key>Label</key>
+	<string>com.yunxin.jarvis.voice</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__JARVIS_ROOT__/.venv-voice/bin/python</string>
+		<string>__JARVIS_ROOT__/voice/daemon.py</string>
+	</array>
+	<!-- 工作目录=项目根：daemon 据此找 .env / workspace/voice/ / data/voice_cache/ -->
+	<key>WorkingDirectory</key>
+	<string>__JARVIS_ROOT__</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>__JARVIS_ROOT__/logs/voice.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>__JARVIS_ROOT__/logs/voice.err.log</string>
+	<!-- LaunchAgent 默认 PATH 极简，补全 brew 路径 -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+</dict>
+</plist>

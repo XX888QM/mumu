@@ -87,6 +87,49 @@ cd "/Users/yunxin/Desktop/开发/贾维斯系统"
 
 改完 `.env` 后重跑 `bash deploy/install.sh` 生效（会重新渲染 plist 并重载服务）。
 
+## 语音模式（Phase 2）
+
+喊一声 **"Jarvis"** 唤醒 → 说指令 → 贾维斯应声接活 → 办完用贾维斯音色播报结果；待批授权可直接开口说"批准/拒绝"。唤醒、断句、识别、合成全部本地推理，音频不出这台 Mac。
+
+### 组成
+
+| 组件 | 进程 / 端口 | 说明 |
+|------|------------|------|
+| 语音守护 `voice/daemon.py` | LaunchAgent `com.yunxin.jarvis.voice`（`.venv-voice`） | openwakeword(hey_jarvis) 唤醒 + silero-vad 断句 + faster-whisper(large-v3-turbo) 转写，对接 :8777 主服务；播报中开口说话即可打断（免唤醒） |
+| TTS worker `voice/tts_worker.py` | LaunchAgent `com.yunxin.jarvis.tts`，仅绑 `127.0.0.1:8778` | IndexTTS-2 合成贾维斯音色，跑在 index-tts 仓库自带 venv；启动即暖机（模型加载约 20~30s） |
+| 服务端语音端点 | `POST /api/voice/transcribe`、`POST /api/voice/tts`（均要 Bearer） | 网页录音转写 / TTS 代理（worker 掉线返回 503） |
+| 网页控制台 | 输入框旁 🎤 按钮 + 顶栏"朗读"开关 | 按住说话、松开自动转写发送；开朗读后本会话任务完成自动播报摘要 |
+
+### .env 语音变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `VOICE_ENABLED` | `1` | `0`/`false`/空 = 不装语音服务（install.sh 会顺手卸掉已装的） |
+| `TTS_PORT` | `8778` | TTS worker 端口（只监听 127.0.0.1） |
+| `INDEX_TTS_DIR` | `/Users/yunxin/Desktop/开发/index-tts` | IndexTTS-2 仓库路径（自带 `.venv` 与 checkpoints） |
+| `VOICE_REF` | `workspace/voice/jarvis_ref.wav` | 参考音色；**换音色 = 换这个 wav（22050Hz 单声道）后重跑 install.sh** |
+| `ASR_MODEL` | `large-v3-turbo` | faster-whisper 模型（cpu int8） |
+| `WAKE_THRESHOLD` | `0.5` | 唤醒置信度阈值：误唤醒多 → 调大；唤不醒 → 调小 |
+
+### 安装与使用
+
+- `bash deploy/install.sh`（VOICE_ENABLED=1 时）自动渲染并装载 `com.yunxin.jarvis.tts` / `com.yunxin.jarvis.voice` 两个 LaunchAgent，并对 `http://127.0.0.1:8778/healthz` 重试最长 2 分钟等模型就绪。
+- **首次启动 macOS 会弹麦克风授权窗，必须点允许**（之后在 系统设置 → 隐私与安全性 → 麦克风 可改）。
+- 流程：喊 "Jarvis" → 听到应答（如"在 / 大哥请讲"）→ 说指令 → 贾维斯确认接单，办完自动播报；正在忙时会提示稍等。
+
+### 调试与排障
+
+| 操作 | 命令 / 位置 |
+|------|------------|
+| 自检（不碰麦克风） | `.venv-voice/bin/python voice/daemon.py --selftest` |
+| 试音色 | `.venv-voice/bin/python voice/daemon.py --say "大哥好"` |
+| 喂 wav 走完整流程 | `.venv-voice/bin/python voice/daemon.py --once-from-wav xx.wav` |
+| 日志 | `logs/tts.{out,err}.log`、`logs/voice.{out,err}.log` |
+| TTS 健康检查 | `curl http://127.0.0.1:8778/healthz` |
+| 跑语音测试 | `.venv-voice/bin/python -m pytest tests/voice/ -v`；服务端语音端点 `.venv/bin/python -m pytest tests/test_voice_api.py -v` |
+
+常见问题：听不见播报 → 先 `curl :8778/healthz` 看 worker 是否在线、再查 `logs/tts.err.log`；唤不醒 → 确认麦克风权限已允许、调小 `WAKE_THRESHOLD`；网页 🎤 置灰 → 浏览器无麦克风权限或非安全上下文（localhost 不受限）。
+
 ## 常见故障
 
 | 症状 | 原因 | 处理 |
@@ -103,13 +146,14 @@ cd "/Users/yunxin/Desktop/开发/贾维斯系统"
 
 ```
 jarvis/         后端：server / engine / db / approval / scheduler / push / mcp_server / config
+voice/          语音侧：daemon / wake / asr / audio / acks / client / tts_worker
 web/            科幻控制台（纯静态，零构建）
 cli/jarvis      命令行入口
-workspace/      贾维斯工作区：AGENTS.md（人格）、memory.md（长期记忆）、任务产出物
-deploy/         LaunchAgent 模板 + install.sh / uninstall.sh
-data/           SQLite 数据库（jarvis.db，WAL）
-logs/           jarvis.out.log / jarvis.err.log
-tests/          pytest 测试
+workspace/      贾维斯工作区：AGENTS.md（人格）、memory.md（长期记忆）、voice/jarvis_ref.wav（音色）
+deploy/         LaunchAgent 模板 ×3（主服务/tts/voice）+ install.sh / uninstall.sh
+data/           SQLite 数据库（jarvis.db，WAL）、voice_cache/（应答语缓存）
+logs/           jarvis / tts / voice 的 .out.log 与 .err.log
+tests/          pytest 测试（tests/voice/ 用 .venv-voice 跑）
 ```
 
 ## 开发

@@ -408,3 +408,31 @@ input:focus, textarea:focus { border-color: rgba(0, 229, 255, 0.6); box-shadow: 
   .bar-right { flex: 1; min-width: 0; display: flex; justify-content: flex-end; }
   #sysbar { max-width: none; }
 }
+
+/* ===== Phase 2 语音（契约 1.6）：🎤 按住说话 + 朗读开关 ===== */
+#mic-btn {
+  flex: none; min-width: 46px; padding: 8px 10px; font-size: 15px;
+  touch-action: none;           /* 手机按住不触发滚动/手势，pointer 事件才连贯 */
+  user-select: none; -webkit-user-select: none;
+}
+#mic-btn.recording {
+  color: var(--red); border-color: rgba(255, 59, 77, 0.85);
+  background: rgba(255, 59, 77, 0.12);
+  animation: pulse-red 1.2s ease-in-out infinite;
+}
+#btn-speak {
+  font-family: var(--font); font-size: 15px; line-height: 1;
+  color: var(--dim); background: none; border: 1px solid var(--border);
+  border-radius: 3px; padding: 4px 8px; cursor: pointer;
+  transition: box-shadow 0.15s, color 0.15s;
+}
+#btn-speak.on {
+  color: var(--cyan); border-color: rgba(0, 229, 255, 0.55);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.35);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
+}
+/* 录音中：反应堆变红脉冲（契约 1.6） */
+.reactor.recording { filter: drop-shadow(0 0 12px rgba(255, 59, 77, 1)); }
+.reactor.recording circle { stroke: var(--red); }
+.reactor.recording .core { fill: #ff9aa4; animation-duration: 0.5s; }
+.reactor.recording .seg-ring { animation-duration: 1s; }
