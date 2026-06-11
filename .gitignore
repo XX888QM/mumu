@@ -1,10 +1,11 @@
-.venv/
 __pycache__/
-*.pyc
+.DS_Store
 .env
+.pytest_cache/
+.venv/
+*.pyc
 data/
 logs/
-workspace/memory.md
+tts-rt/
 workspace/.codex/
-.pytest_cache/
-.DS_Store
+workspace/memory.md
