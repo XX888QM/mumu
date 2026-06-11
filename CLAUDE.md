@@ -1,9 +1,11 @@
 # 木木系统项目规则
 
 ## 部署坐标（线上真值以实际进程/配置为准）
-- **项目真实位置：`~/jarvis`**；`~/Desktop/开发/贾维斯系统` 是指向它的软链
-  （搬迁原因见下方"TCC 血泪教训"，勿搬回 Desktop）
-- 三个 LaunchAgent（均 KeepAlive 常驻开机自启）：
+- **项目真实位置：`~/Desktop/开发/木木`**（2026-06-11 傍晚大哥拍板从 ~/jarvis 搬回，
+  知晓 TCC 风险）；`~/jarvis` 现在是指向它的**反向软链**（保 cli shebang/文档路径兼容）
+- **当前状态：三个服务已停止、plist 已卸载（大哥指示"先不运行木木"）**；
+  重新启动＝`bash deploy/install.sh`（一条命令，幂等）
+- 三个 LaunchAgent（运行时均 KeepAlive 常驻开机自启）：
   `com.yunxin.jarvis`（主服务 8777）/ `com.yunxin.jarvis.tts`（TTS worker 127.0.0.1:8778）/
   `com.yunxin.jarvis.voice`（语音守护：唤醒词"木木" → ASR → chat → TTS 播报）
 - 端口：8777（监听 0.0.0.0 局域网）；控制台 http://localhost:8777
@@ -19,7 +21,12 @@
 - **launchd 拉起的进程读 ~/Desktop（及 Documents/Downloads）下文件会被 TCC 卡死在内核 open()**：
   uv 管理的 python 解释器 venv 在 Desktop 下时连 Py_Initialize 都过不去（site 读 .pth 即挂）。
   **终端手动跑正常 ≠ launchd 正常**（终端会话有宿主 App 的 TCC 权限）。
-- 解法＝运行时全部迁出 TCC 保护区（本项目因此搬到 ~/jarvis）。常驻服务永远别部署在 Desktop。
+- 解法＝运行时全部迁出 TCC 保护区（本项目曾因此搬到 ~/jarvis）。
+- **2026-06-11 傍晚搬回 Desktop 实测**：从终端 `install.sh` 装载后三服务健康检查全过——
+  但从终端 load 可能借了终端的 TCC 上下文，**重启电脑后 launchd 冷启动才是真考验**；
+  若开机后三服务全卡死（有 PID 无响应/日志空白）＝TCC 复发，出路二选一：
+  ① 系统设置→隐私与安全性→完全磁盘访问权限，放行 `.venv`/`.venv-voice`/`tts-rt/.venv`
+  三个 python 解释器；② 搬回 `mv ~/Desktop/开发/木木 ~/jarvis` 后重跑 install.sh。
 - 麦克风是独立 TCC 权限：python 首次开麦需大哥在 系统设置→隐私与安全性→麦克风 放行。
 - 多 agent 教训：队员 `git add -A` 曾把两万个 venv 文件提交进仓库（.gitignore 漏了 .venv-voice），
   已 filter-branch 清洗。**收队员提交必须看 `git show --stat`。**
