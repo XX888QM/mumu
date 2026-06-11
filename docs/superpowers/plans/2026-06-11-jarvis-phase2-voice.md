@@ -13,7 +13,10 @@
 ## 0. 已验证事实（直接信，勿重验）
 
 - IndexTTS-2 API：`IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints").infer(spk_audio_prompt=<wav>, text=<str>, output_path=<wav路径>)`，仓库 `~/Desktop/开发/index-tts`，自带 `.venv`。
-- TTS 实测耗时见集成节冒烟记录（脚手架已跑通 /tmp/jarvis_tts_smoke.wav）。
+- TTS 实测（脚手架已跑通）：设备自动选 **mps**；模型加载 ~18.5s；**暖机后短句合成 ~4.5s**
+  （首次合成 ~7s 含参考音色缓存）。故 tts_worker 启动后必须立即做一次暖机合成（结果丢弃）。
+- ⚠️ index-tts 仓库 examples/*.wav 是 Git LFS 指针（纯文本不可用，上游 LFS 配额超限拉不回）；
+  参考音色已用真实 wav 落位 workspace/voice/jarvis_ref.wav（22050Hz mono PCM），勿用 examples/。
 - `.venv-voice`（python3.12）由脚手架建好，已装：openwakeword、faster-whisper、silero-vad、sounddevice、httpx、websockets、numpy、pytest、pytest-asyncio。
 - 唤醒模型与 whisper 模型已由脚手架预下载（whisper 走 HF_ENDPOINT=https://hf-mirror.com）。
 - Phase 1 契约全部沿用：REST/WS/认证/DB 不变；WS 认证=首消息 auth。
