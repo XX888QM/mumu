@@ -1060,14 +1060,22 @@ function setSpeak(on) {
   btn.title = state.speak ? "朗读已开启：任务完成木木音色播报" : "朗读已关闭（语音下令仍自动播报）";
 }
 
-async function speakText(text) {
+async function speakText(text, attempt = 0) {
   // 钳到 500 字：与服务端 /api/voice/tts 的 max_length 对齐（超长会 422 整段播不出）
   text = String(text || "").trim().slice(0, 500);
   if (!text) return;
   try {
     const res = await api("/api/voice/tts", { method: "POST", body: { text } });
     if (!res.ok) {
+      if (res.status === 503 && attempt < 5) {
+        // TTS worker 重启窗口（内存压力被 Jetsam 杀后 KeepAlive 拉起，加载+暖机约 30s）：
+        // 每 6s 重试，最多 5 次——覆盖整个暖机期，播报迟到但不缺席
+        setVoiceStatus(`语音引擎重启中，稍候播报…（${attempt + 1}/5）`);
+        setTimeout(() => speakText(text, attempt + 1), 6000);
+        return;
+      }
       toast(res.status === 503 ? "TTS worker 离线，无法朗读" : "朗读失败 HTTP " + res.status, true);
+      setVoiceStatus("待命 // STANDBY");
       return;
     }
     const url = URL.createObjectURL(await res.blob());
