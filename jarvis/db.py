@@ -58,6 +58,15 @@ class Database:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
         self.conn.commit()
+        # 库里有 prompt/任务结果/审批明细，收紧到仅本用户可读（审查修复）；
+        # SQLite 新建 -wal/-shm 继承主库权限，所以收主文件即可，存量另补
+        try:
+            os.chmod(path, 0o600)
+            for suffix in ("-wal", "-shm"):
+                if os.path.exists(path + suffix):
+                    os.chmod(path + suffix, 0o600)
+        except OSError:
+            pass  # 收紧失败不影响功能（特殊文件系统场景）
 
     # ---------- 内部工具 ----------
 

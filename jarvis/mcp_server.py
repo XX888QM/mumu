@@ -102,6 +102,12 @@ def request_approval(action: str, detail: str, risk_level: str = "high") -> str:
             if status != "pending":
                 return status
             if time.monotonic() + POLL_INTERVAL > deadline:
+                # 超时回写 pending→expired（服务端广播清红卡，防脏数据滞留）；
+                # 回写失败不影响结论——模型侧一律按 expired 处理
+                try:
+                    client.post(f"/api/internal/approvals/{approval_id}/expire")
+                except httpx.HTTPError:
+                    pass
                 return "expired"
             time.sleep(POLL_INTERVAL)
 

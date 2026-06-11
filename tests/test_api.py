@@ -240,6 +240,12 @@ class FakeApprovalGateway:
             await self.on_resolve(approval)
         return approval
 
+    async def expire(self, approval_id: str):
+        approval = self.db.decide_approval(approval_id, "expired", "timeout")
+        if approval and self.on_resolve:
+            await self.on_resolve(approval)
+        return approval
+
     def expire_stale(self) -> int:
         return 0
 
@@ -298,6 +304,9 @@ def make_client(monkeypatch, tmp_path):
         gateway = FakeApprovalGateway(db)
         monkeypatch.setattr(settings, "jarvis_token", TOKEN)
         monkeypatch.setattr(settings, "workspace", str(tmp_path / "workspace"))
+        # P0 修复：runtime_file 必须重定向到临时目录——lifespan 启动即写该文件，
+        # 不重定向会用测试 token 覆写真实 data/.runtime.json，线上 MCP 工具桥全 401
+        monkeypatch.setattr(settings, "runtime_file", str(tmp_path / "runtime.json"))
         pushes: list[dict] = []
 
         async def _fake_push(title, body, url=None, level="active"):
@@ -556,6 +565,35 @@ def test_approval_decide_validation(make_client):
     # decision 只能是 approved/denied
     r = env.client.post(f"/api/approvals/{aid}/decide", json={"decision": "maybe"}, headers=H)
     assert r.status_code == 422
+
+
+def test_internal_approval_expire(make_client):
+    """MCP 桥超时回写端点：pending → expired；已决幂等返回当前行；不存在 404。"""
+    env = make_client()
+    r = env.client.post("/api/internal/approvals",
+                        json={"action": "a", "detail": "d", "risk_level": "high"}, headers=H)
+    aid = r.json()["approval_id"]
+
+    r = env.client.post(f"/api/internal/approvals/{aid}/expire", headers=H)
+    assert r.status_code == 200
+    assert r.json()["status"] == "expired"
+    assert r.json()["decided_via"] == "timeout"
+
+    # 幂等：已过期再 expire → 返回当前行不报错
+    r = env.client.post(f"/api/internal/approvals/{aid}/expire", headers=H)
+    assert r.status_code == 200
+    assert r.json()["status"] == "expired"
+
+    # 已批准的不被覆盖
+    r = env.client.post("/api/internal/approvals",
+                        json={"action": "b", "detail": "d", "risk_level": "high"}, headers=H)
+    aid2 = r.json()["approval_id"]
+    env.client.post(f"/api/approvals/{aid2}/decide", json={"decision": "approved"}, headers=H)
+    r = env.client.post(f"/api/internal/approvals/{aid2}/expire", headers=H)
+    assert r.status_code == 200
+    assert r.json()["status"] == "approved"
+
+    assert env.client.post("/api/internal/approvals/nope/expire", headers=H).status_code == 404
 
 
 # ---------------- cron ----------------

@@ -161,3 +161,40 @@ def test_expire_stale(db):
 def test_expire_stale_nothing_to_do(db):
     gw = ApprovalGateway(db)
     assert gw.expire_stale() == 0
+
+
+# ---------- expire（2026-06-11 审查修复：MCP 桥超时回写） ----------
+
+@pytest.mark.asyncio
+async def test_expire_pending_sets_expired_and_fires_on_resolve(db):
+    resolved = []
+
+    async def on_resolve(approval):
+        resolved.append(approval)
+
+    gw = ApprovalGateway(db, on_resolve=on_resolve)
+    a = await gw.request(None, "act", "d", "high")
+    updated = await gw.expire(a["id"])
+
+    assert updated["status"] == "expired"
+    assert updated["decided_via"] == "timeout"
+    assert resolved == [updated]
+    assert db.get_approval(a["id"])["status"] == "expired"
+
+
+@pytest.mark.asyncio
+async def test_expire_non_pending_is_idempotent_none(db):
+    """已决申请再 expire → None 且不触发回调、不改状态。"""
+    resolved = []
+
+    async def on_resolve(approval):
+        resolved.append(approval)
+
+    gw = ApprovalGateway(db, on_resolve=on_resolve)
+    a = await gw.request(None, "act", "d", "high")
+    await gw.decide(a["id"], "approved", "console")
+    resolved.clear()
+
+    assert await gw.expire(a["id"]) is None
+    assert resolved == []
+    assert db.get_approval(a["id"])["status"] == "approved"

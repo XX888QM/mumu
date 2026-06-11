@@ -52,6 +52,14 @@ PORT="$(env_get JARVIS_PORT)"; PORT="${PORT:-8777}"
 
 # ---------- 3. 目录 ----------
 mkdir -p "$ROOT/data" "$ROOT/logs" "$ROOT/workspace" "$HOME/Library/LaunchAgents"
+# 权限收紧（审查修复）：db/日志含 prompt、任务结果、审批明细，仅本用户可读。
+# 预建日志文件并 chmod——launchd 对已存在文件追加写、不会重置权限；
+# jarvis.db 的 -wal/-shm 由 SQLite 继承主库权限（db.py 内亦有兜底）。
+for f in jarvis tts voice; do
+    touch "$ROOT/logs/$f.out.log" "$ROOT/logs/$f.err.log"
+done
+chmod 600 "$ROOT"/logs/*.log 2>/dev/null || true
+chmod 600 "$ROOT"/data/jarvis.db* "$ROOT"/data/*.json 2>/dev/null || true
 
 # ---------- 4. 渲染并安装 plist ----------
 sed -e "s|__JARVIS_ROOT__|$ROOT|g" \

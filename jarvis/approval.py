@@ -57,6 +57,19 @@ class ApprovalGateway:
         await self._fire(self.on_resolve, updated)
         return updated
 
+    async def expire(self, approval_id: str) -> dict | None:
+        """仅 pending → expired（MCP 桥等待超时回写用），触发 on_resolve；非 pending 返回 None。
+
+        2026-06-11 审查修复：MCP 桥轮询超时后只 return "expired" 不回写，pending
+        脏数据会滞留到下次服务重启（expire_stale）才清，期间控制台红卡常挂、
+        大哥可能批准一个模型早已放弃等待的申请。
+        """
+        updated = self.db.decide_approval(approval_id, "expired", "timeout")
+        if updated is None:
+            return None
+        await self._fire(self.on_resolve, updated)
+        return updated
+
     async def wait(self, approval_id: str, timeout: float) -> str:
         """轮询 db 每 1s 直到非 pending 或超时；超时置 expired 并触发 on_resolve。
 

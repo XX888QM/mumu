@@ -43,6 +43,8 @@ def client(monkeypatch, tmp_path):
     db = FakeDatabase()
     monkeypatch.setattr(settings, "jarvis_token", TOKEN)
     monkeypatch.setattr(settings, "workspace", str(tmp_path / "workspace"))
+    # P0 修复：同 test_api.make_client——不重定向会污染真实 data/.runtime.json
+    monkeypatch.setattr(settings, "runtime_file", str(tmp_path / "runtime.json"))
     app = server_mod.app
     app.state.db = db
     app.state.engine = FakeEngine()

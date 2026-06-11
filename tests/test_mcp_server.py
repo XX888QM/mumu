@@ -185,13 +185,33 @@ def test_request_approval_default_risk_level_high(env, monkeypatch):
 
 
 def test_request_approval_timeout_returns_expired(env, monkeypatch):
-    """一直 pending 且超过 APPROVAL_TIMEOUT → 返回 "expired"。"""
+    """一直 pending 且超过 APPROVAL_TIMEOUT → 返回 "expired"，且回写服务端置过期。"""
     monkeypatch.setenv("APPROVAL_TIMEOUT", "0")
+    posts: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"approval_id": "ap-3"})
+            posts.append(request.url.path)
+            return httpx.Response(200, json={"approval_id": "ap-3", "id": "ap-3",
+                                             "status": "expired"})
         return httpx.Response(200, json={"id": "ap-3", "status": "pending"})
+
+    install_transport(monkeypatch, handler)
+    assert mcp_server.request_approval("危险操作", "细节") == "expired"
+    # 审查修复：超时必须回写 pending→expired（防脏数据滞留到下次服务重启）
+    assert posts[-1] == "/api/internal/approvals/ap-3/expire"
+
+
+def test_request_approval_timeout_writeback_failure_tolerated(env, monkeypatch):
+    """超时回写接口网络错时仍返回 "expired"（回写是 best-effort）。"""
+    monkeypatch.setenv("APPROVAL_TIMEOUT", "0")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/expire"):
+            raise httpx.ConnectError("server gone")
+        if request.method == "POST":
+            return httpx.Response(200, json={"approval_id": "ap-4"})
+        return httpx.Response(200, json={"id": "ap-4", "status": "pending"})
 
     install_transport(monkeypatch, handler)
     assert mcp_server.request_approval("危险操作", "细节") == "expired"

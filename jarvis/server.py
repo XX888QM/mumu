@@ -470,6 +470,21 @@ async def internal_approvals(body: ApprovalIn, request: Request):
     return {"approval_id": approval["id"]}
 
 
+@router.post("/internal/approvals/{approval_id}/expire")
+async def internal_expire_approval(approval_id: str, request: Request):
+    """MCP 桥等待超时回写：pending → expired（广播 approval_resolved 清红卡）。
+
+    幂等：已决/已过期的申请返回当前行；不存在 404。
+    """
+    approval = await request.app.state.gateway.expire(approval_id)
+    if approval is None:
+        current = request.app.state.db.get_approval(approval_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="approval not found")
+        return current
+    return approval
+
+
 @router.post("/internal/notify")
 async def internal_notify(body: NotifyIn):
     ok = await _bark(body.title, body.body)
